@@ -1,0 +1,101 @@
+src/
+├── main.ts
+├── app.module.ts
+├── app.config.ts
+│
+├── common/
+│   ├── decorators/
+│   │   ├── current-user.decorator.ts
+│   │   ├── roles.decorator.ts
+│   │   └── public.decorator.ts
+│   ├── filters/
+│   │   └── http-exception.filter.ts
+│   ├── guards/
+│   │   ├── jwt-auth.guard.ts
+│   │   └── roles.guard.ts
+│   ├── interceptors/
+│   │   ├── audit-log.interceptor.ts
+│   │   └── response-transform.interceptor.ts
+│   ├── pipes/
+│   │   └── validation.pipe.ts
+│   └── utils/
+│       ├── crypto.util.ts
+│       ├── qr.util.ts
+│       └── pagination.util.ts
+│
+├── modules/
+│   ├── auth/
+│   │   ├── auth.module.ts
+│   │   ├── auth.controller.ts
+│   │   ├── auth.service.ts
+│   │   ├── strategies/
+│   │   │   ├── jwt.strategy.ts
+│   │   │   └── refresh.strategy.ts
+│   │   └── dto/
+│   │       ├── login.dto.ts
+│   │       ├── register.dto.ts
+│   │       ├── otp.dto.ts
+│   │       └── token-response.dto.ts
+│   │
+│   ├── members/
+│   │   ├── members.module.ts
+│   │   ├── members.controller.ts
+│   │   ├── members.service.ts
+│   │   ├── members.repository.ts
+│   │   └── dto/
+│   │       ├── create-member.dto.ts
+│   │       ├── update-member.dto.ts
+│   │       ├── member-response.dto.ts
+│   │       └── member-search.dto.ts
+│   │
+│   ├── admins/
+│   │   ├── admins.module.ts
+│   │   ├── admins.controller.ts
+│   │   ├── admins.service.ts
+│   │   └── dto/
+│   │       ├── create-admin.dto.ts
+│   │       └── admin-response.dto.ts
+│   │
+│   ├── attendance/
+│   │   ├── attendance.module.ts
+│   │   ├── attendance.controller.ts
+│   │   ├── attendance.service.ts
+│   │   ├── sessions.controller.ts
+│   │   ├── sessions.service.ts
+│   │   └── dto/
+│   │       ├── create-session.dto.ts
+│   │       ├── qr-scan.dto.ts
+│   │       ├── mark-attendance.dto.ts
+│   │       └── attendance-response.dto.ts
+│   │
+│   ├── qr/
+│   │   ├── qr.module.ts
+│   │   ├── qr.controller.ts
+│   │   └── qr.service.ts
+│   │
+│   ├── reports/
+│   │   ├── reports.module.ts
+│   │   ├── reports.controller.ts
+│   │   ├── reports.service.ts
+│   │   └── dto/
+│   │       └── report-filters.dto.ts
+│   │
+│   ├── notifications/
+│   │   ├── notifications.module.ts
+│   │   ├── notifications.controller.ts
+│   │   ├── notifications.service.ts
+│   │   └── dto/
+│   │       └── send-notification.dto.ts
+│   │
+│   ├── dashboard/
+│   │   ├── dashboard.module.ts
+│   │   └── dashboard.controller.ts
+│   │
+│   └── audit/
+│       ├── audit.module.ts
+│       └── audit.service.ts
+│
+└── database/
+    ├── database.module.ts
+    └── migrations/
+        └── 001_initial_schema.ts
