@@ -1,5 +1,5 @@
 import {
-  Controller, Post, Body, HttpCode, HttpStatus, UseGuards,
+  Controller, Get, Post, Body, HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -50,6 +50,14 @@ export class AuthController {
   @ApiOperation({ summary: 'Refresh access token using refresh token' })
   refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refreshTokens(dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Get('me')
+  @ApiOperation({ summary: 'Get current user profile' })
+  getMe(@CurrentUser() user: any) {
+    return { data: user };
   }
 
   @UseGuards(JwtAuthGuard)
