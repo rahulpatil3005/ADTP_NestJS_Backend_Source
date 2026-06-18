@@ -52,7 +52,7 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   const port = process.env.PORT ?? 4000;
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   Logger.log(`🥁 ADTP API running on http://localhost:${port}/api/v1`, 'Bootstrap');
   Logger.log(`📖 Swagger docs: http://localhost:${port}/api/docs`, 'Bootstrap');
 }
