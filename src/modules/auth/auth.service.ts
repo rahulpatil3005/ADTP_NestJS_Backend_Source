@@ -154,6 +154,22 @@ export class AuthService {
     return { message: 'Logged out successfully' };
   }
 
+  // ── Get current user profile ────────────────────────────
+
+  async getMe(userId: string) {
+    const rows = await this.db.query(
+      `SELECT u.id, u.email, u.phone, u.role, u.is_active,
+              COALESCE(a.full_name, m.full_name) AS full_name
+       FROM auth.users u
+       LEFT JOIN core.admins a ON a.user_id = u.id
+       LEFT JOIN core.members m ON m.user_id = u.id
+       WHERE u.id = $1`,
+      [userId],
+    );
+    if (!rows.length) throw new Error('User not found');
+    return { data: rows[0] };
+  }
+
   // ── Change Password ──────────────────────────────────────
 
   async changePassword(

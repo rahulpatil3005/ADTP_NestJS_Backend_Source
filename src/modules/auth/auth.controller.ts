@@ -57,7 +57,7 @@ export class AuthController {
   @Get('me')
   @ApiOperation({ summary: 'Get current user profile' })
   getMe(@CurrentUser() user: any) {
-    return { data: user };
+    return this.authService.getMe(user.id);
   }
 
   @UseGuards(JwtAuthGuard)
