@@ -28,7 +28,6 @@ export async function generateMemberQr(memberId: string): Promise<{
     width: 800,                 // 2× resolution — crisp on high-DPI screens and prints
     margin: 3,                  // wider quiet zone improves scanner detection
     color: { dark: '#000000', light: '#FFFFFF' },
-    rendererOpts: { quality: 1 },
   });
 
   const qrBase64 = qrDataUrl.replace(/^data:image\/png;base64,/, '');
@@ -47,7 +46,6 @@ export async function renderQrFromToken(memberId: string, encryptedToken: string
     width: 800,
     margin: 3,
     color: { dark: '#000000', light: '#FFFFFF' },
-    rendererOpts: { quality: 1 },
   });
 }
 
