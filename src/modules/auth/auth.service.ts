@@ -167,7 +167,7 @@ export class AuthService {
       [userId],
     );
     if (!rows.length) throw new Error('User not found');
-    return { data: rows[0] };
+    return rows[0];
   }
 
   // ── Change Password ──────────────────────────────────────
