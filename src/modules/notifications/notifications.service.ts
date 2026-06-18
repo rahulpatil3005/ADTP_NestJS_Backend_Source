@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import * as admin from 'firebase-admin';
 
 export interface SendNotificationDto {
   userIds?: string[];
@@ -16,18 +15,7 @@ export interface SendNotificationDto {
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
-  constructor(@InjectDataSource() private readonly db: DataSource) {
-    // Firebase Admin SDK — skip init if credentials are not configured (local dev)
-    if (!admin.apps.length && process.env.FIREBASE_PROJECT_ID) {
-      admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId: process.env.FIREBASE_PROJECT_ID,
-          privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        }),
-      });
-    }
-  }
+  constructor(@InjectDataSource() private readonly db: DataSource) {}
 
   // ── Send to specific users ───────────────────────────────
 
@@ -54,32 +42,7 @@ export class NotificationsService {
       ),
     );
 
-    // Get FCM tokens for all users
-    const tokenRows = await this.db.query(
-      `SELECT fcm_token FROM notifications.device_tokens
-       WHERE user_id = ANY($1) AND is_active = true`,
-      [userIds],
-    );
-    const tokens: string[] = tokenRows.map((r: any) => r.fcm_token);
-
-    if (tokens.length && admin.apps.length) {
-      try {
-        const result = await admin.messaging().sendEachForMulticast({
-          tokens,
-          notification: { title: dto.title, body: dto.body },
-          data: dto.data ?? {},
-          android: { priority: 'high' },
-          apns: { payload: { aps: { sound: 'default', badge: 1 } } },
-        });
-        this.logger.log(
-          `FCM sent: ${result.successCount} success, ${result.failureCount} fail`,
-        );
-      } catch (err) {
-        this.logger.error('FCM send error', err);
-      }
-    }
-
-    return { sent: userIds.length, pushTokens: tokens.length };
+    return { sent: userIds.length };
   }
 
   // ── Register device token ────────────────────────────────
