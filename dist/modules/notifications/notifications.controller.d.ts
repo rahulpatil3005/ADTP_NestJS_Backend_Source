@@ -4,7 +4,6 @@ export declare class NotificationsController {
     constructor(notificationsService: NotificationsService);
     send(dto: SendNotificationDto): Promise<{
         sent: number;
-        pushTokens: number;
     }>;
     registerToken(userId: string, body: {
         fcmToken: string;

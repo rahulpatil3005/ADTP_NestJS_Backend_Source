@@ -105,6 +105,17 @@ let AuthService = AuthService_1 = class AuthService {
         await this.db.query(`UPDATE auth.users SET refresh_token_hash = NULL WHERE id = $1`, [userId]);
         return { message: 'Logged out successfully' };
     }
+    async getMe(userId) {
+        const rows = await this.db.query(`SELECT u.id, u.email, u.phone, u.role, u.is_active,
+              COALESCE(a.full_name, m.full_name) AS full_name
+       FROM auth.users u
+       LEFT JOIN core.admins a ON a.user_id = u.id
+       LEFT JOIN core.members m ON m.user_id = u.id
+       WHERE u.id = $1`, [userId]);
+        if (!rows.length)
+            throw new Error('User not found');
+        return rows[0];
+    }
     async changePassword(userId, dto) {
         const result = await this.db.query(`SELECT password_hash FROM auth.users WHERE id = $1`, [userId]);
         const match = await bcrypt.compare(dto.currentPassword, result[0].password_hash);

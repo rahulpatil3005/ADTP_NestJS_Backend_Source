@@ -17,20 +17,10 @@ exports.NotificationsService = void 0;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
-const admin = require("firebase-admin");
 let NotificationsService = NotificationsService_1 = class NotificationsService {
     constructor(db) {
         this.db = db;
         this.logger = new common_1.Logger(NotificationsService_1.name);
-        if (!admin.apps.length && process.env.FIREBASE_PROJECT_ID) {
-            admin.initializeApp({
-                credential: admin.credential.cert({
-                    projectId: process.env.FIREBASE_PROJECT_ID,
-                    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-                    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-                }),
-            });
-        }
     }
     async send(dto) {
         let userIds = dto.userIds ?? [];
@@ -40,25 +30,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
         }
         await Promise.all(userIds.map((uid) => this.db.query(`INSERT INTO notifications.notifications (user_id, title, body, type, data, sent_at)
            VALUES ($1,$2,$3,$4,$5,NOW())`, [uid, dto.title, dto.body, dto.type, JSON.stringify(dto.data ?? {})])));
-        const tokenRows = await this.db.query(`SELECT fcm_token FROM notifications.device_tokens
-       WHERE user_id = ANY($1) AND is_active = true`, [userIds]);
-        const tokens = tokenRows.map((r) => r.fcm_token);
-        if (tokens.length && admin.apps.length) {
-            try {
-                const result = await admin.messaging().sendEachForMulticast({
-                    tokens,
-                    notification: { title: dto.title, body: dto.body },
-                    data: dto.data ?? {},
-                    android: { priority: 'high' },
-                    apns: { payload: { aps: { sound: 'default', badge: 1 } } },
-                });
-                this.logger.log(`FCM sent: ${result.successCount} success, ${result.failureCount} fail`);
-            }
-            catch (err) {
-                this.logger.error('FCM send error', err);
-            }
-        }
-        return { sent: userIds.length, pushTokens: tokens.length };
+        return { sent: userIds.length };
     }
     async registerToken(userId, fcmToken, platform, deviceName) {
         await this.db.query(`INSERT INTO notifications.device_tokens (user_id, fcm_token, platform, device_name)

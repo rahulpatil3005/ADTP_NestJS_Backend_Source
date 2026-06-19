@@ -13,7 +13,6 @@ export declare class NotificationsService {
     constructor(db: DataSource);
     send(dto: SendNotificationDto): Promise<{
         sent: number;
-        pushTokens: number;
     }>;
     registerToken(userId: string, fcmToken: string, platform: string, deviceName?: string): Promise<{
         message: string;

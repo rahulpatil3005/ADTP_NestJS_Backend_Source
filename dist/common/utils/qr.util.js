@@ -17,7 +17,6 @@ async function generateMemberQr(memberId) {
         width: 800,
         margin: 3,
         color: { dark: '#000000', light: '#FFFFFF' },
-        rendererOpts: { quality: 1 },
     });
     const qrBase64 = qrDataUrl.replace(/^data:image\/png;base64,/, '');
     return { rawToken, encryptedToken, qrBase64, qrDataUrl };
@@ -30,7 +29,6 @@ async function renderQrFromToken(memberId, encryptedToken) {
         width: 800,
         margin: 3,
         color: { dark: '#000000', light: '#FFFFFF' },
-        rendererOpts: { quality: 1 },
     });
 }
 function parseQrPayload(raw) {

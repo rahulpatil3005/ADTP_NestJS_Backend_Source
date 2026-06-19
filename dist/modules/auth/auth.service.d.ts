@@ -17,6 +17,7 @@ export declare class AuthService {
     logout(userId: string): Promise<{
         message: string;
     }>;
+    getMe(userId: string): Promise<any>;
     changePassword(userId: string, dto: ChangePasswordDto): Promise<{
         message: string;
     }>;

@@ -9,6 +9,7 @@ export declare class AuthController {
     }>;
     verifyOtp(dto: VerifyOtpDto): Promise<import("./dto/auth.dto").TokenResponseDto>;
     refresh(dto: RefreshTokenDto): Promise<import("./dto/auth.dto").TokenResponseDto>;
+    getMe(user: any): Promise<any>;
     logout(userId: string): Promise<{
         message: string;
     }>;
