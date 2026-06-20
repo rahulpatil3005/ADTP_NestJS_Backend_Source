@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import * as JSZip from 'jszip';
 import { generateMemberQr, renderQrFromToken } from '../../common/utils/qr.util';
 
 @Injectable()
@@ -42,6 +43,36 @@ export class QrService {
       data: r.status === 'fulfilled' ? r.value : null,
       error: r.status === 'rejected' ? r.reason?.message : null,
     }));
+  }
+
+  async downloadAllQrZip(): Promise<Buffer> {
+    const members = await this.db.query(
+      `SELECT id, member_id, full_name, qr_token
+       FROM core.members
+       WHERE deleted_at IS NULL AND status = 'active'
+       ORDER BY member_id`,
+    );
+
+    const zip = new JSZip();
+
+    for (const member of members) {
+      let qrDataUrl: string;
+      if (member.qr_token) {
+        qrDataUrl = await renderQrFromToken(member.member_id, member.qr_token);
+      } else {
+        const result = await this.generateForMember(member.id);
+        qrDataUrl = result.qrDataUrl;
+      }
+      const base64 = qrDataUrl.replace(/^data:image\/png;base64,/, '');
+      const buf = Buffer.from(base64, 'base64');
+      const safeName = (member.full_name as string)
+        .replace(/[^a-zA-Z0-9 ]/g, '')
+        .trim()
+        .replace(/\s+/g, '_');
+      zip.file(`${member.member_id}_${safeName}.png`, buf);
+    }
+
+    return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }) as Promise<Buffer>;
   }
 
   async getQrForMember(memberId: string) {
