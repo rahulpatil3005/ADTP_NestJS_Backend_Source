@@ -74,6 +74,20 @@ export class MembersController {
     return this.membersService.getAttendanceSummary(id);
   }
 
+  // POST /members/:id/photo — Upload member photo + extract face descriptor
+  @Post(':id/photo')
+  @Roles('super_admin', 'admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload member photo and extract face descriptor' })
+  @UseInterceptors(FileInterceptor('photo'))
+  uploadPhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.membersService.uploadPhoto(id, file);
+  }
+
   // POST /members/bulk-import
   @Post('bulk-import')
   @Roles('super_admin', 'admin')

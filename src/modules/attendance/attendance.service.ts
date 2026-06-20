@@ -1,6 +1,6 @@
 import {
   Injectable, NotFoundException, BadRequestException, ConflictException,
-  Logger, InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -10,11 +10,18 @@ import {
 } from './dto/attendance.dto';
 import { parseQrPayload, haversineDistance } from '../../common/utils/qr.util';
 import { decrypt } from '../../common/utils/crypto.util';
+import { MembersService } from '../members/members.service';
+import { FaceService } from '../members/face.service';
 
 @Injectable()
 export class AttendanceService {
   private readonly logger = new Logger(AttendanceService.name);
-  constructor(@InjectDataSource() private readonly db: DataSource) {}
+
+  constructor(
+    @InjectDataSource() private readonly db: DataSource,
+    private readonly membersService: MembersService,
+    private readonly faceService: FaceService,
+  ) {}
 
   // ── Sessions ─────────────────────────────────────────────
 
@@ -276,6 +283,99 @@ export class AttendanceService {
       [...params, limit, offset],
     );
     return rows;
+  }
+
+  // ── Face Scan Attendance ─────────────────────────────────
+
+  async processFaceScan(
+    sessionId: string,
+    imageBuffer: Buffer,
+    userId: string,
+  ) {
+    if (!this.faceService.isReady) {
+      throw new BadRequestException(
+        'Face recognition is not available. Run: node scripts/download-face-models.js and restart the server.',
+      );
+    }
+
+    const adminId = await this.resolveAdminId(userId);
+
+    // Load session
+    const sessionRows = await this.db.query(
+      `SELECT * FROM attendance.sessions WHERE id = $1`, [sessionId],
+    );
+    if (!sessionRows.length) throw new NotFoundException('Session not found');
+    const session = sessionRows[0];
+
+    // Extract face descriptor from incoming image
+    const probe = await this.faceService.extractDescriptor(imageBuffer);
+    if (!probe) {
+      throw new BadRequestException('No face detected in the photo. Please try again with a clear face photo.');
+    }
+
+    // Get all stored descriptors
+    const candidates = await this.membersService.getAllFaceDescriptors();
+    if (!candidates.length) {
+      throw new BadRequestException('No members have registered face photos yet. Upload photos for members first.');
+    }
+
+    // Find closest match (threshold 0.5 = ~50% confidence)
+    const match = this.faceService.findClosestMatch(probe, candidates);
+    if (!match) {
+      throw new BadRequestException('Face not recognised. The person may not be a registered member or photo quality is low.');
+    }
+
+    // Load matched member
+    const memberRows = await this.db.query(
+      `SELECT id, full_name, member_id, status FROM core.members WHERE id = $1 AND deleted_at IS NULL`,
+      [match.id],
+    );
+    if (!memberRows.length) throw new NotFoundException('Matched member not found');
+    const member = memberRows[0];
+
+    if (member.status !== 'active') {
+      throw new BadRequestException(`${member.full_name}'s account is not active`);
+    }
+
+    // Check duplicate
+    const existing = await this.db.query(
+      `SELECT id FROM attendance.records WHERE session_id = $1 AND member_id = $2`,
+      [sessionId, member.id],
+    );
+    if (existing.length) {
+      throw new ConflictException(`Attendance already marked for ${member.full_name}`);
+    }
+
+    // Determine status
+    let status: AttendanceStatus = AttendanceStatus.PRESENT;
+    if (session.start_time) {
+      const sessionStart = new Date(`${session.session_date}T${session.start_time}`);
+      if (new Date() > new Date(sessionStart.getTime() + 15 * 60 * 1000)) {
+        status = AttendanceStatus.LATE;
+      }
+    }
+
+    // Insert record
+    const record = await this.db.query(
+      `INSERT INTO attendance.records
+        (session_id, member_id, attendance_status, check_in_time, check_in_method, scanned_by_admin)
+       VALUES ($1,$2,$3,NOW(),'face_scan',$4) RETURNING *`,
+      [sessionId, member.id, status, adminId],
+    );
+
+    return {
+      success: true,
+      attendanceId: record[0].id,
+      member: {
+        id: member.id,
+        memberId: member.member_id,
+        fullName: member.full_name,
+      },
+      status,
+      confidence: Math.round((1 - match.distance / 0.5) * 100),
+      checkInTime: record[0].check_in_time,
+      sessionTitle: session.title,
+    };
   }
 
   // ── Internal scan logger ─────────────────────────────────

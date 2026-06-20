@@ -1,8 +1,10 @@
 import {
   Controller, Get, Post, Delete, Body, Param, Query,
   UseGuards, ParseUUIDPipe, HttpCode, HttpStatus,
+  UseInterceptors, UploadedFile, BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { AttendanceService } from './attendance.service';
 import {
   CreateSessionDto, QrScanDto, MarkAttendanceDto, AttendanceFilterDto,
@@ -103,5 +105,23 @@ export class AttendanceController {
     @Query() filter: AttendanceFilterDto,
   ) {
     return this.attendanceService.getMemberHistory(memberId, filter);
+  }
+
+  // ── Face Scan — mark attendance by face recognition ──────
+
+  @Post('face-scan')
+  @Roles('super_admin', 'admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Mark attendance by face recognition (alternative to QR scan)' })
+  @UseInterceptors(FileInterceptor('photo'))
+  async faceScan(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('sessionId') sessionId: string,
+    @CurrentUser('id') adminId: string,
+  ) {
+    if (!file) throw new BadRequestException('Photo is required');
+    if (!sessionId) throw new BadRequestException('sessionId is required');
+    return this.attendanceService.processFaceScan(sessionId, file.buffer, adminId);
   }
 }

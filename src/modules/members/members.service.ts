@@ -3,11 +3,13 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import * as fs from 'fs';
 import { CreateMemberDto, UpdateMemberDto, MemberSearchDto } from './dto/member.dto';
 import { encrypt, decrypt } from '../../common/utils/crypto.util';
 import { generateMemberQr } from '../../common/utils/qr.util';
 import { WhatsAppService } from '../../common/services/whatsapp.service';
 import { SettingsService } from '../settings/settings.service';
+import { FaceService } from './face.service';
 
 @Injectable()
 export class MembersService {
@@ -17,6 +19,7 @@ export class MembersService {
     @InjectDataSource() private readonly db: DataSource,
     private readonly whatsapp: WhatsAppService,
     private readonly settings: SettingsService,
+    private readonly faceService: FaceService,
   ) {}
 
   // ── Register ─────────────────────────────────────────────
@@ -240,5 +243,55 @@ export class MembersService {
       }
     }
     return results;
+  }
+
+  // ── Photo Upload + Face Descriptor ───────────────────────
+
+  async uploadPhoto(id: string, file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No photo file provided');
+    await this.findOne(id);
+
+    const photoUrl = `/uploads/photos/${file.filename}`;
+    let faceDescriptor: number[] | null = null;
+
+    if (this.faceService.isReady) {
+      const buffer = fs.readFileSync(file.path);
+      faceDescriptor = await this.faceService.extractDescriptor(buffer);
+      if (!faceDescriptor) {
+        this.logger.warn(`No face detected in uploaded photo for member ${id}`);
+      }
+    }
+
+    await this.db.query(
+      `UPDATE core.members
+       SET photo_url = $1, face_descriptor = $2, updated_at = NOW()
+       WHERE id = $3`,
+      [photoUrl, faceDescriptor ? JSON.stringify(faceDescriptor) : null, id],
+    );
+
+    return {
+      photoUrl,
+      faceDetected: !!faceDescriptor,
+      message: faceDescriptor
+        ? 'Photo uploaded and face registered for attendance'
+        : 'Photo uploaded (no face detected — re-upload a clear face photo for face scan)',
+    };
+  }
+
+  // ── Get all members with face descriptors (for face-scan matching) ───
+
+  async getAllFaceDescriptors(): Promise<Array<{ id: string; descriptor: number[] }>> {
+    const rows = await this.db.query(
+      `SELECT id, face_descriptor FROM core.members
+       WHERE face_descriptor IS NOT NULL AND deleted_at IS NULL AND status = 'active'`,
+    );
+    return rows
+      .filter((r: any) => r.face_descriptor)
+      .map((r: any) => ({
+        id: r.id,
+        descriptor: typeof r.face_descriptor === 'string'
+          ? JSON.parse(r.face_descriptor)
+          : r.face_descriptor,
+      }));
   }
 }
