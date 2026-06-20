@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Avishkar Dhol Tasha Pathak — Attendance & Member Management System API",
   "scripts": {
-    "build": "nest build",
+    "build": "node scripts/download-face-models.js && nest build",
     "start": "node dist/main",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
