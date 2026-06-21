@@ -91,40 +91,57 @@ export class QrService {
     this.roundRect(ctx, 0, 0, W, H, R);
     ctx.fill();
 
-    // ── Crimson header ────────────────────────────────────────
-    const headerH = 180;
+    // ── Crimson header (compact — content only ~78px tall) ────
+    const headerH = 112;
     ctx.fillStyle = '#8A0112';
     this.roundRect(ctx, 0, 0, W, headerH, [R, R, 0, 0]);
     ctx.fill();
 
-    // Music icon circle
+    // Music icon circle — draw a simple note shape instead of ♪
+    // (NotoSans doesn't include musical note glyphs)
+    const iconCX = 56, iconCY = 56, iconR = 28;
     ctx.fillStyle = 'rgba(255,255,255,0.18)';
     ctx.beginPath();
-    ctx.arc(56, 56, 28, 0, Math.PI * 2);
+    ctx.arc(iconCX, iconCY, iconR, 0, Math.PI * 2);
     ctx.fill();
+    // Draw a simple music note: filled oval head + vertical stem + flag
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 22px NotoSans';
-    ctx.textAlign = 'center';
-    ctx.fillText('♪', 56, 63);
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 3;
+    // note head (filled ellipse)
+    ctx.beginPath();
+    ctx.ellipse(iconCX - 4, iconCY + 8, 7, 5, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+    // stem
+    ctx.beginPath();
+    ctx.moveTo(iconCX + 3, iconCY + 8);
+    ctx.lineTo(iconCX + 3, iconCY - 10);
+    ctx.stroke();
+    // flag
+    ctx.beginPath();
+    ctx.moveTo(iconCX + 3, iconCY - 10);
+    ctx.bezierCurveTo(iconCX + 18, iconCY - 6, iconCX + 16, iconCY + 2, iconCX + 3, iconCY - 2);
+    ctx.stroke();
 
     // Org name & card title
     ctx.fillStyle = 'rgba(255,255,255,0.65)';
-    ctx.font = '15px NotoSans';
+    ctx.font = '14px NotoSans';
     ctx.textAlign = 'left';
-    ctx.fillText('AVISHKAR DHOL TASHA PATHAK', 98, 47);
+    ctx.fillText('AVISHKAR DHOL TASHA PATHAK', 98, 44);
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 22px NotoSans';
-    ctx.fillText('Member Card', 98, 78);
+    ctx.fillText('Member Card', 98, 76);
 
-    // Header accent line
+    // Header bottom accent
     ctx.fillStyle = 'rgba(255,255,255,0.15)';
     ctx.fillRect(0, headerH - 4, W, 4);
 
     // ── Avatar circle ─────────────────────────────────────────
-    const avatarY = headerH + 64;
+    const avatarR = 52;
+    const avatarY = headerH + 80;   // center of circle
     ctx.fillStyle = '#FDEEF0';
     ctx.beginPath();
-    ctx.arc(W / 2, avatarY, 52, 0, Math.PI * 2);
+    ctx.arc(W / 2, avatarY, avatarR, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#F5C2C7';
     ctx.lineWidth = 2;
@@ -142,24 +159,26 @@ export class QrService {
     ctx.fillText(initials, W / 2, avatarY + 12);
 
     // ── Member name ───────────────────────────────────────────
+    const nameY = avatarY + avatarR + 36;   // 36px gap below avatar bottom
     ctx.fillStyle = '#1A1A2E';
     ctx.font = 'bold 30px NotoSans';
     ctx.textAlign = 'center';
-    ctx.fillText(fullName, W / 2, avatarY + 76);
+    ctx.fillText(fullName, W / 2, nameY);
 
     // ── Instrument badge ──────────────────────────────────────
     const badge = instrument.charAt(0).toUpperCase() + instrument.slice(1);
     ctx.font = 'bold 15px NotoSans';
-    const bW = ctx.measureText(badge).width + 36;
-    const bY = avatarY + 94;
+    const bW = ctx.measureText(badge).width + 40;
+    const bH = 32;
+    const bY = nameY + 20;          // 20px gap below name baseline
     ctx.fillStyle = '#FDEEF0';
-    this.roundRect(ctx, W / 2 - bW / 2, bY, bW, 30, 15);
+    this.roundRect(ctx, W / 2 - bW / 2, bY, bW, bH, 16);
     ctx.fill();
     ctx.fillStyle = '#8A0112';
-    ctx.fillText(badge, W / 2, bY + 20);
+    ctx.fillText(badge, W / 2, bY + 22);
 
     // ── Divider ───────────────────────────────────────────────
-    const divY = bY + 52;
+    const divY = bY + bH + 36;     // 36px gap below badge
     ctx.strokeStyle = '#E0DFD8';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -169,15 +188,15 @@ export class QrService {
 
     // ── QR code ───────────────────────────────────────────────
     const qrImg = await loadImage(qrDataUrl);
-    const qrSize = 380;
+    const qrSize = 360;
     const qrX = (W - qrSize) / 2;
-    const qrY = divY + 24;
+    const qrY = divY + 36;         // 36px gap below divider
 
     // QR container box
     ctx.fillStyle = '#FAFAF7';
     ctx.strokeStyle = '#E0DFD8';
     ctx.lineWidth = 1;
-    this.roundRect(ctx, qrX - 20, qrY - 20, qrSize + 40, qrSize + 40, 16);
+    this.roundRect(ctx, qrX - 24, qrY - 24, qrSize + 48, qrSize + 48, 20);
     ctx.fill();
     ctx.stroke();
 
@@ -185,27 +204,27 @@ export class QrService {
     ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
 
     // ── Member ID pill ─────────────────────────────────────────
-    const idY = qrY + qrSize + 36;
+    const idY = qrY + qrSize + 40;
     ctx.fillStyle = '#FDEEF0';
-    this.roundRect(ctx, W / 2 - 130, idY, 260, 44, 10);
+    this.roundRect(ctx, W / 2 - 140, idY, 280, 46, 12);
     ctx.fill();
     ctx.fillStyle = '#8A0112';
-    ctx.font = 'bold 19px NotoSans';
+    ctx.font = 'bold 20px NotoSans';
     ctx.textAlign = 'center';
-    ctx.fillText(memberId, W / 2, idY + 28);
+    ctx.fillText(memberId, W / 2, idY + 30);
 
     // ── Scan instructions ──────────────────────────────────────
     ctx.fillStyle = '#888888';
     ctx.font = '14px NotoSans';
-    ctx.fillText('Scan this QR code to mark attendance', W / 2, idY + 74);
-    ctx.fillText('Keep this card safe', W / 2, idY + 94);
+    ctx.fillText('Scan this QR code to mark attendance', W / 2, idY + 72);
+    ctx.fillText('Keep this card safe', W / 2, idY + 93);
 
     // ── Crimson footer ─────────────────────────────────────────
     ctx.fillStyle = '#8A0112';
-    this.roundRect(ctx, 0, H - 52, W, 52, [0, 0, R, R]);
+    this.roundRect(ctx, 0, H - 54, W, 54, [0, 0, R, R]);
     ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.font = '13px NotoSans';
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    ctx.font = '14px NotoSans';
     ctx.fillText('avishkardhtp.org', W / 2, H - 20);
 
     // ── Outer border ───────────────────────────────────────────
