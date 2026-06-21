@@ -1,9 +1,18 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import * as path from 'path';
 import * as JSZip from 'jszip';
-import { createCanvas, loadImage } from 'canvas';
+import { createCanvas, loadImage, registerFont } from 'canvas';
 import { generateMemberQr, renderQrFromToken } from '../../common/utils/qr.util';
+
+const FONTS_DIR = path.join(process.cwd(), 'assets', 'fonts');
+try {
+  registerFont(path.join(FONTS_DIR, 'NotoSans-Regular.ttf'), { family: 'NotoSans' });
+  registerFont(path.join(FONTS_DIR, 'NotoSans-Bold.ttf'), { family: 'NotoSans', weight: 'bold' });
+} catch {
+  // fonts not available; canvas will fall back to system fonts
+}
 
 @Injectable()
 export class QrService {
@@ -94,17 +103,17 @@ export class QrService {
     ctx.arc(56, 56, 28, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 22px sans-serif';
+    ctx.font = 'bold 22px NotoSans';
     ctx.textAlign = 'center';
     ctx.fillText('♪', 56, 63);
 
     // Org name & card title
     ctx.fillStyle = 'rgba(255,255,255,0.65)';
-    ctx.font = '600 15px sans-serif';
+    ctx.font = '15px NotoSans';
     ctx.textAlign = 'left';
     ctx.fillText('AVISHKAR DHOL TASHA PATHAK', 98, 47);
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 22px sans-serif';
+    ctx.font = 'bold 22px NotoSans';
     ctx.fillText('Member Card', 98, 78);
 
     // Header accent line
@@ -128,19 +137,19 @@ export class QrService {
       .slice(0, 2)
       .toUpperCase();
     ctx.fillStyle = '#8A0112';
-    ctx.font = 'bold 34px sans-serif';
+    ctx.font = 'bold 34px NotoSans';
     ctx.textAlign = 'center';
     ctx.fillText(initials, W / 2, avatarY + 12);
 
     // ── Member name ───────────────────────────────────────────
     ctx.fillStyle = '#1A1A2E';
-    ctx.font = 'bold 30px sans-serif';
+    ctx.font = 'bold 30px NotoSans';
     ctx.textAlign = 'center';
     ctx.fillText(fullName, W / 2, avatarY + 76);
 
     // ── Instrument badge ──────────────────────────────────────
     const badge = instrument.charAt(0).toUpperCase() + instrument.slice(1);
-    ctx.font = '600 15px sans-serif';
+    ctx.font = 'bold 15px NotoSans';
     const bW = ctx.measureText(badge).width + 36;
     const bY = avatarY + 94;
     ctx.fillStyle = '#FDEEF0';
@@ -181,13 +190,13 @@ export class QrService {
     this.roundRect(ctx, W / 2 - 130, idY, 260, 44, 10);
     ctx.fill();
     ctx.fillStyle = '#8A0112';
-    ctx.font = 'bold 19px monospace';
+    ctx.font = 'bold 19px NotoSans';
     ctx.textAlign = 'center';
     ctx.fillText(memberId, W / 2, idY + 28);
 
     // ── Scan instructions ──────────────────────────────────────
     ctx.fillStyle = '#888888';
-    ctx.font = '14px sans-serif';
+    ctx.font = '14px NotoSans';
     ctx.fillText('Scan this QR code to mark attendance', W / 2, idY + 74);
     ctx.fillText('Keep this card safe', W / 2, idY + 94);
 
@@ -196,7 +205,7 @@ export class QrService {
     this.roundRect(ctx, 0, H - 52, W, 52, [0, 0, R, R]);
     ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.font = '13px sans-serif';
+    ctx.font = '13px NotoSans';
     ctx.fillText('avishkardhtp.org', W / 2, H - 20);
 
     // ── Outer border ───────────────────────────────────────────
