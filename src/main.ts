@@ -20,15 +20,24 @@ async function bootstrap() {
     logger: ['log', 'warn', 'error', 'debug'],
   });
 
-  // Serve uploaded photos as static files at /uploads/...
-  app.useStaticAssets(path.join(process.cwd(), 'uploads'), { prefix: '/uploads' });
-
-  // Security
-  app.use(helmet());
+  // Security — helmet before static assets so CORP header can be overridden per-path
+  app.use(helmet({
+    crossOriginResourcePolicy: false, // we set it per-route below
+  }));
   app.use(compression());
   app.enableCors({
-    origin: process.env.CORS_ORIGIN?.split(',') ?? ['http://localhost:3000'],
-    credentials: true,
+    origin: '*',
+    credentials: false,
+  });
+
+  // Serve uploaded photos as static files at /uploads/...
+  // Must be after enableCors so CORS headers are applied
+  app.useStaticAssets(path.join(process.cwd(), 'uploads'), {
+    prefix: '/uploads',
+    setHeaders: (res: any) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    },
   });
 
   // Global prefix
