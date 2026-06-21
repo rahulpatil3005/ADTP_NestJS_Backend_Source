@@ -1,3 +1,4 @@
+import { Response } from 'express';
 import { AttendanceService } from './attendance.service';
 import { CreateSessionDto, QrScanDto, MarkAttendanceDto, AttendanceFilterDto } from './dto/attendance.dto';
 export declare class AttendanceController {
@@ -7,6 +8,7 @@ export declare class AttendanceController {
     getSessions(page: string, limit: string): Promise<any>;
     getSession(id: string): Promise<any>;
     getSessionAttendance(id: string, filter: AttendanceFilterDto): Promise<any>;
+    exportSession(id: string, res: Response): Promise<void>;
     deleteSession(id: string): Promise<{
         message: string;
     }>;
@@ -21,6 +23,19 @@ export declare class AttendanceController {
         status: import("./dto/attendance.dto").AttendanceStatus.PRESENT | import("./dto/attendance.dto").AttendanceStatus.LATE;
         checkInTime: any;
         sessionTitle: any;
+    }>;
+    clockOut(id: string): Promise<{
+        memberName: any;
+        checkOutTime: any;
+    }>;
+    qrCheckout(dto: QrScanDto): Promise<{
+        memberName: any;
+        checkOutTime: any;
+    }>;
+    faceCheckout(file: Express.Multer.File, sessionId: string): Promise<{
+        memberName: any;
+        checkOutTime: any;
+        confidence: number;
     }>;
     markManual(dto: MarkAttendanceDto, adminId: string): Promise<{
         message: string;

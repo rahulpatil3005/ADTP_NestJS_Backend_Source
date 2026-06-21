@@ -1,7 +1,8 @@
 import {
   Injectable, NotFoundException, BadRequestException, ConflictException,
-  Logger,
+  Logger, OnModuleInit,
 } from '@nestjs/common';
+import * as ExcelJS from 'exceljs';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import {
@@ -14,7 +15,7 @@ import { MembersService } from '../members/members.service';
 import { FaceService } from '../members/face.service';
 
 @Injectable()
-export class AttendanceService {
+export class AttendanceService implements OnModuleInit {
   private readonly logger = new Logger(AttendanceService.name);
 
   constructor(
@@ -22,6 +23,12 @@ export class AttendanceService {
     private readonly membersService: MembersService,
     private readonly faceService: FaceService,
   ) {}
+
+  async onModuleInit() {
+    await this.db.query(
+      `ALTER TABLE attendance.records ADD COLUMN IF NOT EXISTS check_out_time TIMESTAMPTZ`,
+    );
+  }
 
   // ── Sessions ─────────────────────────────────────────────
 
@@ -376,6 +383,166 @@ export class AttendanceService {
       checkInTime: record[0].check_in_time,
       sessionTitle: session.title,
     };
+  }
+
+  // ── Clock Out (by record ID — manual button) ─────────────
+
+  async clockOut(recordId: string) {
+    const rows = await this.db.query(
+      `SELECT r.id, r.check_out_time, m.full_name
+       FROM attendance.records r JOIN core.members m ON m.id = r.member_id
+       WHERE r.id = $1`, [recordId],
+    );
+    if (!rows.length) throw new NotFoundException('Attendance record not found');
+    if (rows[0].check_out_time) throw new BadRequestException('Member has already clocked out');
+    const result = await this.db.query(
+      `UPDATE attendance.records SET check_out_time = NOW(), updated_at = NOW()
+       WHERE id = $1 RETURNING check_out_time`,
+      [recordId],
+    );
+    return { memberName: rows[0].full_name, checkOutTime: result[0].check_out_time };
+  }
+
+  // ── Clock Out via QR scan ─────────────────────────────────
+
+  async clockOutByQr(dto: QrScanDto) {
+    let payload: any;
+    try { payload = parseQrPayload(dto.qrPayload); } catch {
+      throw new BadRequestException('Invalid QR code');
+    }
+
+    const memberRows = await this.db.query(
+      `SELECT id, full_name FROM core.members WHERE member_id = $1 AND deleted_at IS NULL LIMIT 1`,
+      [payload.memberId],
+    );
+    if (!memberRows.length) throw new NotFoundException('Member not found');
+    const member = memberRows[0];
+
+    const recordRows = await this.db.query(
+      `SELECT id, check_out_time FROM attendance.records
+       WHERE session_id = $1 AND member_id = $2`,
+      [dto.sessionId, member.id],
+    );
+    if (!recordRows.length) throw new NotFoundException('No check-in record found for this member in this session');
+    if (recordRows[0].check_out_time) throw new ConflictException(`${member.full_name} has already clocked out`);
+
+    const result = await this.db.query(
+      `UPDATE attendance.records SET check_out_time = NOW(), updated_at = NOW()
+       WHERE id = $1 RETURNING check_out_time`,
+      [recordRows[0].id],
+    );
+    return { memberName: member.full_name, checkOutTime: result[0].check_out_time };
+  }
+
+  // ── Clock Out via face scan ───────────────────────────────
+
+  async clockOutByFace(sessionId: string, photoBuffer: Buffer) {
+    const allDescriptors = await this.membersService.getAllFaceDescriptors();
+    if (!allDescriptors.length) throw new BadRequestException('No face profiles registered');
+
+    const queryDescriptor = await this.faceService.extractDescriptor(photoBuffer);
+    if (!queryDescriptor) throw new BadRequestException('No face detected in photo');
+
+    const bestMatch = this.faceService.findClosestMatch(queryDescriptor, allDescriptors);
+    if (!bestMatch) throw new NotFoundException('Face not recognised');
+
+    const memberRows = await this.db.query(
+      `SELECT id, full_name FROM core.members WHERE id = $1`, [bestMatch.id],
+    );
+    const member = memberRows[0];
+
+    const recordRows = await this.db.query(
+      `SELECT id, check_out_time FROM attendance.records
+       WHERE session_id = $1 AND member_id = $2`,
+      [sessionId, member.id],
+    );
+    if (!recordRows.length) throw new NotFoundException('No check-in record found for this member in this session');
+    if (recordRows[0].check_out_time) throw new ConflictException(`${member.full_name} has already clocked out`);
+
+    const result = await this.db.query(
+      `UPDATE attendance.records SET check_out_time = NOW(), updated_at = NOW()
+       WHERE id = $1 RETURNING check_out_time`,
+      [recordRows[0].id],
+    );
+    return {
+      memberName: member.full_name,
+      checkOutTime: result[0].check_out_time,
+      confidence: Math.round((1 - bestMatch.distance / 0.5) * 100),
+    };
+  }
+
+  // ── Export session attendance as Excel ───────────────────
+
+  async exportSessionExcel(sessionId: string): Promise<Buffer> {
+    const session = await this.getSession(sessionId);
+
+    const records = await this.db.query(
+      `SELECT ar.attendance_status, ar.check_in_time, ar.check_in_method,
+              ar.check_out_time,
+              m.member_id AS member_code, m.full_name, m.instrument, m.mobile_number
+       FROM attendance.records ar
+       JOIN core.members m ON m.id = ar.member_id
+       WHERE ar.session_id = $1
+       ORDER BY ar.check_in_time ASC NULLS LAST, m.full_name ASC`,
+      [sessionId],
+    );
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Avishkar DHTP System';
+    workbook.created = new Date();
+
+    const sheet = workbook.addWorksheet('Session Attendance', {
+      pageSetup: { paperSize: 9, orientation: 'landscape' },
+    });
+
+    sheet.columns = [
+      { header: 'Member ID',   key: 'member_code',        width: 18 },
+      { header: 'Full Name',   key: 'full_name',           width: 26 },
+      { header: 'Instrument',  key: 'instrument',          width: 14 },
+      { header: 'Mobile',      key: 'mobile_number',       width: 16 },
+      { header: 'Status',      key: 'attendance_status',   width: 12 },
+      { header: 'Check-In',    key: 'check_in_time',       width: 22 },
+      { header: 'Check-Out',   key: 'check_out_time',      width: 22 },
+      { header: 'Duration',    key: 'duration',            width: 14 },
+      { header: 'Method',      key: 'check_in_method',     width: 14 },
+    ];
+
+    // Header row styling
+    sheet.getRow(1).eachCell((cell) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF8A0112' } };
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+    sheet.getRow(1).height = 24;
+
+    records.forEach((row: any, i: number) => {
+      const checkIn  = row.check_in_time  ? new Date(row.check_in_time)  : null;
+      const checkOut = row.check_out_time ? new Date(row.check_out_time) : null;
+      let duration = '—';
+      if (checkIn && checkOut) {
+        const mins = Math.round((checkOut.getTime() - checkIn.getTime()) / 60000);
+        duration = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+      }
+
+      const r = sheet.addRow({
+        member_code:       row.member_code,
+        full_name:         row.full_name,
+        instrument:        row.instrument ? (row.instrument.charAt(0).toUpperCase() + row.instrument.slice(1)) : '—',
+        mobile_number:     row.mobile_number,
+        attendance_status: row.attendance_status?.toUpperCase(),
+        check_in_time:     checkIn  ? checkIn.toLocaleString('en-IN')  : '—',
+        check_out_time:    checkOut ? checkOut.toLocaleString('en-IN') : '—',
+        duration,
+        check_in_method:   row.check_in_method ?? '—',
+      });
+      if (i % 2 === 1) {
+        r.eachCell((cell) => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF0F1' } };
+        });
+      }
+    });
+
+    return (await workbook.xlsx.writeBuffer()) as unknown as Buffer;
   }
 
   // ── Internal scan logger ─────────────────────────────────

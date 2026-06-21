@@ -71,14 +71,16 @@ export class ReportsService {
     });
 
     sheet.columns = [
-      { header: 'Member ID', key: 'member_code', width: 18 },
-      { header: 'Full Name', key: 'full_name', width: 25 },
-      { header: 'Instrument', key: 'instrument', width: 14 },
-      { header: 'Session', key: 'session_title', width: 30 },
-      { header: 'Date', key: 'session_date', width: 14 },
-      { header: 'Status', key: 'attendance_status', width: 12 },
-      { header: 'Check-In', key: 'check_in_time', width: 20 },
-      { header: 'Method', key: 'check_in_method', width: 12 },
+      { header: 'Member ID',  key: 'member_code',        width: 18 },
+      { header: 'Full Name',  key: 'full_name',           width: 25 },
+      { header: 'Instrument', key: 'instrument',          width: 14 },
+      { header: 'Session',    key: 'session_title',       width: 30 },
+      { header: 'Date',       key: 'session_date',        width: 14 },
+      { header: 'Status',     key: 'attendance_status',   width: 12 },
+      { header: 'Check-In',   key: 'check_in_time',       width: 20 },
+      { header: 'Check-Out',  key: 'check_out_time',      width: 20 },
+      { header: 'Duration',   key: 'duration',            width: 12 },
+      { header: 'Method',     key: 'check_in_method',     width: 12 },
     ];
 
     // Header styling
@@ -90,15 +92,25 @@ export class ReportsService {
     sheet.getRow(1).height = 24;
 
     data.forEach((row: any, i: number) => {
+      const checkIn  = row.check_in_time  ? new Date(row.check_in_time)  : null;
+      const checkOut = row.check_out_time ? new Date(row.check_out_time) : null;
+      let duration = '—';
+      if (checkIn && checkOut) {
+        const mins = Math.round((checkOut.getTime() - checkIn.getTime()) / 60000);
+        duration = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+      }
+
       const excelRow = sheet.addRow({
-        member_code: row.member_code,
-        full_name: row.full_name,
-        instrument: row.instrument,
-        session_title: row.session_title,
-        session_date: row.session_date ? new Date(row.session_date).toLocaleDateString('en-IN') : '',
+        member_code:       row.member_code,
+        full_name:         row.full_name,
+        instrument:        row.instrument ? (row.instrument.charAt(0).toUpperCase() + row.instrument.slice(1)) : '—',
+        session_title:     row.session_title,
+        session_date:      row.session_date ? new Date(row.session_date).toLocaleDateString('en-IN') : '',
         attendance_status: row.attendance_status?.toUpperCase(),
-        check_in_time: row.check_in_time ? new Date(row.check_in_time).toLocaleString('en-IN') : '—',
-        check_in_method: row.check_in_method,
+        check_in_time:     checkIn  ? checkIn.toLocaleString('en-IN')  : '—',
+        check_out_time:    checkOut ? checkOut.toLocaleString('en-IN') : '—',
+        duration,
+        check_in_method:   row.check_in_method ?? '—',
       });
       if (i % 2 === 1) {
         excelRow.eachCell((cell) => {
@@ -112,14 +124,25 @@ export class ReportsService {
 
   async exportCsv(filters: ReportFilters): Promise<string> {
     const data = await this.getRangeReport(filters);
-    const header = 'Member ID,Full Name,Instrument,Session,Date,Status,Check-In,Method\n';
-    const rows = data.map((r: any) =>
-      [
-        r.member_code, `"${r.full_name}"`, r.instrument,
+    const header = 'Member ID,Full Name,Instrument,Session,Date,Status,Check-In,Check-Out,Duration,Method\n';
+    const rows = data.map((r: any) => {
+      const checkIn  = r.check_in_time  ? new Date(r.check_in_time)  : null;
+      const checkOut = r.check_out_time ? new Date(r.check_out_time) : null;
+      let duration = '';
+      if (checkIn && checkOut) {
+        const mins = Math.round((checkOut.getTime() - checkIn.getTime()) / 60000);
+        duration = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+      }
+      return [
+        r.member_code, `"${r.full_name}"`, r.instrument ? (r.instrument.charAt(0).toUpperCase() + r.instrument.slice(1)) : '',
         `"${r.session_title}"`, r.session_date,
-        r.attendance_status, r.check_in_time ?? '', r.check_in_method ?? '',
-      ].join(','),
-    );
+        r.attendance_status,
+        checkIn  ? checkIn.toLocaleString('en-IN')  : '',
+        checkOut ? checkOut.toLocaleString('en-IN') : '',
+        duration,
+        r.check_in_method ?? '',
+      ].join(',');
+    });
     return header + rows.join('\n');
   }
 

@@ -39,11 +39,33 @@ let AttendanceController = class AttendanceController {
     getSessionAttendance(id, filter) {
         return this.attendanceService.getSessionAttendance(id, filter);
     }
+    async exportSession(id, res) {
+        const buffer = await this.attendanceService.exportSessionExcel(id);
+        res.set({
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition': `attachment; filename="session-attendance-${id}.xlsx"`,
+            'Content-Length': buffer.length,
+        });
+        res.end(buffer);
+    }
     deleteSession(id) {
         return this.attendanceService.deleteSession(id);
     }
     scan(dto, adminId) {
         return this.attendanceService.processQrScan(dto, adminId);
+    }
+    clockOut(id) {
+        return this.attendanceService.clockOut(id);
+    }
+    qrCheckout(dto) {
+        return this.attendanceService.clockOutByQr(dto);
+    }
+    async faceCheckout(file, sessionId) {
+        if (!file)
+            throw new common_1.BadRequestException('Photo is required');
+        if (!sessionId)
+            throw new common_1.BadRequestException('sessionId is required');
+        return this.attendanceService.clockOutByFace(sessionId, file.buffer);
     }
     markManual(dto, adminId) {
         return this.attendanceService.markManual(dto, adminId);
@@ -100,6 +122,16 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], AttendanceController.prototype, "getSessionAttendance", null);
 __decorate([
+    (0, common_1.Get)('sessions/:id/export'),
+    (0, roles_decorator_1.Roles)('super_admin', 'admin'),
+    (0, swagger_1.ApiOperation)({ summary: 'Export session attendance as Excel (.xlsx)' }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], AttendanceController.prototype, "exportSession", null);
+__decorate([
     (0, common_1.Delete)('sessions/:id'),
     (0, roles_decorator_1.Roles)('super_admin'),
     (0, swagger_1.ApiOperation)({ summary: 'Delete a session and all its attendance records' }),
@@ -120,6 +152,39 @@ __decorate([
     __metadata("design:paramtypes", [attendance_dto_1.QrScanDto, String]),
     __metadata("design:returntype", void 0)
 ], AttendanceController.prototype, "scan", null);
+__decorate([
+    (0, common_1.Post)('records/:id/checkout'),
+    (0, roles_decorator_1.Roles)('super_admin', 'admin'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({ summary: 'Clock out a member by attendance record ID' }),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], AttendanceController.prototype, "clockOut", null);
+__decorate([
+    (0, common_1.Post)('qr-checkout'),
+    (0, roles_decorator_1.Roles)('super_admin', 'admin'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({ summary: 'Clock out a member by scanning their QR code' }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [attendance_dto_1.QrScanDto]),
+    __metadata("design:returntype", void 0)
+], AttendanceController.prototype, "qrCheckout", null);
+__decorate([
+    (0, common_1.Post)('face-checkout'),
+    (0, roles_decorator_1.Roles)('super_admin', 'admin'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiConsumes)('multipart/form-data'),
+    (0, swagger_1.ApiOperation)({ summary: 'Clock out a member by face recognition' }),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('photo')),
+    __param(0, (0, common_1.UploadedFile)()),
+    __param(1, (0, common_1.Body)('sessionId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], AttendanceController.prototype, "faceCheckout", null);
 __decorate([
     (0, common_1.Post)('mark'),
     (0, roles_decorator_1.Roles)('super_admin', 'admin'),

@@ -20,6 +20,8 @@ export enum InstrumentType {
   TASHA = 'tasha',
   TOOL = 'tool',
   DHWAJ = 'dhwaj',
+  ZANJ = 'zanj',
+  SUPPORT = 'support',
 }
 
 export enum AvailabilityType {

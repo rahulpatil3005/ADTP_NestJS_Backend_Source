@@ -32,6 +32,8 @@ var InstrumentType;
     InstrumentType["TASHA"] = "tasha";
     InstrumentType["TOOL"] = "tool";
     InstrumentType["DHWAJ"] = "dhwaj";
+    InstrumentType["ZANJ"] = "zanj";
+    InstrumentType["SUPPORT"] = "support";
 })(InstrumentType || (exports.InstrumentType = InstrumentType = {}));
 var AvailabilityType;
 (function (AvailabilityType) {

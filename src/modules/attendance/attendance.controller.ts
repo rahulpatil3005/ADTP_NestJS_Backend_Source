@@ -1,8 +1,9 @@
 import {
-  Controller, Get, Post, Delete, Body, Param, Query,
+  Controller, Get, Post, Delete, Body, Param, Query, Res,
   UseGuards, ParseUUIDPipe, HttpCode, HttpStatus,
   UseInterceptors, UploadedFile, BadRequestException,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AttendanceService } from './attendance.service';
@@ -61,6 +62,22 @@ export class AttendanceController {
     return this.attendanceService.getSessionAttendance(id, filter);
   }
 
+  @Get('sessions/:id/export')
+  @Roles('super_admin', 'admin')
+  @ApiOperation({ summary: 'Export session attendance as Excel (.xlsx)' })
+  async exportSession(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.attendanceService.exportSessionExcel(id);
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="session-attendance-${id}.xlsx"`,
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
+  }
+
   @Delete('sessions/:id')
   @Roles('super_admin')
   @ApiOperation({ summary: 'Delete a session and all its attendance records' })
@@ -80,6 +97,43 @@ export class AttendanceController {
     @CurrentUser('id') adminId: string,
   ) {
     return this.attendanceService.processQrScan(dto, adminId);
+  }
+
+  // ── Clock Out (by record ID — manual list button) ────────
+
+  @Post('records/:id/checkout')
+  @Roles('super_admin', 'admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Clock out a member by attendance record ID' })
+  clockOut(@Param('id', ParseUUIDPipe) id: string) {
+    return this.attendanceService.clockOut(id);
+  }
+
+  // ── Clock Out via QR scan ─────────────────────────────────
+
+  @Post('qr-checkout')
+  @Roles('super_admin', 'admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Clock out a member by scanning their QR code' })
+  qrCheckout(@Body() dto: QrScanDto) {
+    return this.attendanceService.clockOutByQr(dto);
+  }
+
+  // ── Clock Out via face scan ───────────────────────────────
+
+  @Post('face-checkout')
+  @Roles('super_admin', 'admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Clock out a member by face recognition' })
+  @UseInterceptors(FileInterceptor('photo'))
+  async faceCheckout(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('sessionId') sessionId: string,
+  ) {
+    if (!file) throw new BadRequestException('Photo is required');
+    if (!sessionId) throw new BadRequestException('sessionId is required');
+    return this.attendanceService.clockOutByFace(sessionId, file.buffer);
   }
 
   // ── Manual mark ──────────────────────────────────────────

@@ -14,7 +14,9 @@ export declare enum InstrumentType {
     DHOL = "dhol",
     TASHA = "tasha",
     TOOL = "tool",
-    DHWAJ = "dhwaj"
+    DHWAJ = "dhwaj",
+    ZANJ = "zanj",
+    SUPPORT = "support"
 }
 export declare enum AvailabilityType {
     DAILY = "daily",
