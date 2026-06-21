@@ -17,7 +17,6 @@ exports.MembersService = void 0;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
-const fs = require("fs");
 const crypto_util_1 = require("../../common/utils/crypto.util");
 const qr_util_1 = require("../../common/utils/qr.util");
 const whatsapp_service_1 = require("../../common/services/whatsapp.service");
@@ -195,20 +194,19 @@ let MembersService = MembersService_1 = class MembersService {
         if (!file)
             throw new common_1.BadRequestException('No photo file provided');
         await this.findOne(id);
-        const photoUrl = `/uploads/photos/${file.filename}`;
+        const photoDataUrl = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
         let faceDescriptor = null;
         if (this.faceService.isReady) {
-            const buffer = fs.readFileSync(file.path);
-            faceDescriptor = await this.faceService.extractDescriptor(buffer);
+            faceDescriptor = await this.faceService.extractDescriptor(file.buffer);
             if (!faceDescriptor) {
                 this.logger.warn(`No face detected in uploaded photo for member ${id}`);
             }
         }
         await this.db.query(`UPDATE core.members
        SET photo_url = $1, face_descriptor = $2, updated_at = NOW()
-       WHERE id = $3`, [photoUrl, faceDescriptor ? JSON.stringify(faceDescriptor) : null, id]);
+       WHERE id = $3`, [photoDataUrl, faceDescriptor ? JSON.stringify(faceDescriptor) : null, id]);
         return {
-            photoUrl,
+            photoUrl: photoDataUrl,
             faceDetected: !!faceDescriptor,
             message: faceDescriptor
                 ? 'Photo uploaded and face registered for attendance'

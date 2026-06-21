@@ -18,12 +18,20 @@ async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule, {
         logger: ['log', 'warn', 'error', 'debug'],
     });
-    app.useStaticAssets(path.join(process.cwd(), 'uploads'), { prefix: '/uploads' });
-    app.use((0, helmet_1.default)());
+    app.use((0, helmet_1.default)({
+        crossOriginResourcePolicy: false,
+    }));
     app.use(compression());
     app.enableCors({
-        origin: process.env.CORS_ORIGIN?.split(',') ?? ['http://localhost:3000'],
-        credentials: true,
+        origin: '*',
+        credentials: false,
+    });
+    app.useStaticAssets(path.join(process.cwd(), 'uploads'), {
+        prefix: '/uploads',
+        setHeaders: (res) => {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        },
     });
     app.setGlobalPrefix('api/v1');
     app.useGlobalPipes(new common_1.ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }));
