@@ -104,7 +104,7 @@ export class MembersService {
 
   async findAll(search: MemberSearchDto) {
     const page = Math.max(1, Number(search.page ?? 1));
-    const limit = Math.min(100, Math.max(1, Number(search.limit ?? 20)));
+    const limit = Math.min(1000, Math.max(1, Number(search.limit ?? 20)));
     const offset = (page - 1) * limit;
 
     const conditions: string[] = ['m.deleted_at IS NULL'];
