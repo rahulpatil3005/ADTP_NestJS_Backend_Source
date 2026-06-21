@@ -8,13 +8,19 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AttendanceModule = void 0;
 const common_1 = require("@nestjs/common");
+const platform_express_1 = require("@nestjs/platform-express");
 const attendance_controller_1 = require("./attendance.controller");
 const attendance_service_1 = require("./attendance.service");
+const members_module_1 = require("../members/members.module");
 let AttendanceModule = class AttendanceModule {
 };
 exports.AttendanceModule = AttendanceModule;
 exports.AttendanceModule = AttendanceModule = __decorate([
     (0, common_1.Module)({
+        imports: [
+            members_module_1.MembersModule,
+            platform_express_1.MulterModule.register({ limits: { fileSize: 5 * 1024 * 1024 } }),
+        ],
         controllers: [attendance_controller_1.AttendanceController],
         providers: [attendance_service_1.AttendanceService],
         exports: [attendance_service_1.AttendanceService],

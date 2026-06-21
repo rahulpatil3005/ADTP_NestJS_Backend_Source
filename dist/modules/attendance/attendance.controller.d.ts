@@ -28,4 +28,17 @@ export declare class AttendanceController {
         status: import("./dto/attendance.dto").AttendanceStatus;
     }>;
     getMemberHistory(memberId: string, filter: AttendanceFilterDto): Promise<any>;
+    faceScan(file: Express.Multer.File, sessionId: string, adminId: string): Promise<{
+        success: boolean;
+        attendanceId: any;
+        member: {
+            id: any;
+            memberId: any;
+            fullName: any;
+        };
+        status: import("./dto/attendance.dto").AttendanceStatus.PRESENT | import("./dto/attendance.dto").AttendanceStatus.LATE;
+        confidence: number;
+        checkInTime: any;
+        sessionTitle: any;
+    }>;
 }

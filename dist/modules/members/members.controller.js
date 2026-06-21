@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MembersController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
+const platform_express_1 = require("@nestjs/platform-express");
 const members_service_1 = require("./members.service");
 const member_dto_1 = require("./dto/member.dto");
 const jwt_auth_guard_1 = require("../../common/guards/jwt-auth.guard");
@@ -42,6 +43,9 @@ let MembersController = class MembersController {
     }
     attendanceSummary(id) {
         return this.membersService.getAttendanceSummary(id);
+    }
+    uploadPhoto(id, file) {
+        return this.membersService.uploadPhoto(id, file);
     }
     bulkImport(body, adminId) {
         return this.membersService.bulkImport(body.members, adminId);
@@ -105,6 +109,19 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], MembersController.prototype, "attendanceSummary", null);
+__decorate([
+    (0, common_1.Post)(':id/photo'),
+    (0, roles_decorator_1.Roles)('super_admin', 'admin'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiConsumes)('multipart/form-data'),
+    (0, swagger_1.ApiOperation)({ summary: 'Upload member photo and extract face descriptor' }),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('photo')),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.UploadedFile)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", void 0)
+], MembersController.prototype, "uploadPhoto", null);
 __decorate([
     (0, common_1.Post)('bulk-import'),
     (0, roles_decorator_1.Roles)('super_admin', 'admin'),

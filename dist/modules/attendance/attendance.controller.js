@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AttendanceController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
+const platform_express_1 = require("@nestjs/platform-express");
 const attendance_service_1 = require("./attendance.service");
 const attendance_dto_1 = require("./dto/attendance.dto");
 const jwt_auth_guard_1 = require("../../common/guards/jwt-auth.guard");
@@ -49,6 +50,13 @@ let AttendanceController = class AttendanceController {
     }
     getMemberHistory(memberId, filter) {
         return this.attendanceService.getMemberHistory(memberId, filter);
+    }
+    async faceScan(file, sessionId, adminId) {
+        if (!file)
+            throw new common_1.BadRequestException('Photo is required');
+        if (!sessionId)
+            throw new common_1.BadRequestException('sessionId is required');
+        return this.attendanceService.processFaceScan(sessionId, file.buffer, adminId);
     }
 };
 exports.AttendanceController = AttendanceController;
@@ -133,6 +141,20 @@ __decorate([
     __metadata("design:paramtypes", [String, attendance_dto_1.AttendanceFilterDto]),
     __metadata("design:returntype", void 0)
 ], AttendanceController.prototype, "getMemberHistory", null);
+__decorate([
+    (0, common_1.Post)('face-scan'),
+    (0, roles_decorator_1.Roles)('super_admin', 'admin'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiConsumes)('multipart/form-data'),
+    (0, swagger_1.ApiOperation)({ summary: 'Mark attendance by face recognition (alternative to QR scan)' }),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('photo')),
+    __param(0, (0, common_1.UploadedFile)()),
+    __param(1, (0, common_1.Body)('sessionId')),
+    __param(2, (0, current_user_decorator_1.CurrentUser)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, String]),
+    __metadata("design:returntype", Promise)
+], AttendanceController.prototype, "faceScan", null);
 exports.AttendanceController = AttendanceController = __decorate([
     (0, swagger_1.ApiTags)('attendance'),
     (0, swagger_1.ApiBearerAuth)(),

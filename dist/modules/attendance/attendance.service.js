@@ -19,9 +19,13 @@ const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const attendance_dto_1 = require("./dto/attendance.dto");
 const qr_util_1 = require("../../common/utils/qr.util");
+const members_service_1 = require("../members/members.service");
+const face_service_1 = require("../members/face.service");
 let AttendanceService = AttendanceService_1 = class AttendanceService {
-    constructor(db) {
+    constructor(db, membersService, faceService) {
         this.db = db;
+        this.membersService = membersService;
+        this.faceService = faceService;
         this.logger = new common_1.Logger(AttendanceService_1.name);
     }
     async resolveAdminId(userId) {
@@ -206,6 +210,62 @@ let AttendanceService = AttendanceService_1 = class AttendanceService {
        LIMIT $${idx} OFFSET $${idx + 1}`, [...params, limit, offset]);
         return rows;
     }
+    async processFaceScan(sessionId, imageBuffer, userId) {
+        if (!this.faceService.isReady) {
+            throw new common_1.BadRequestException('Face recognition is not available. Run: node scripts/download-face-models.js and restart the server.');
+        }
+        const adminId = await this.resolveAdminId(userId);
+        const sessionRows = await this.db.query(`SELECT * FROM attendance.sessions WHERE id = $1`, [sessionId]);
+        if (!sessionRows.length)
+            throw new common_1.NotFoundException('Session not found');
+        const session = sessionRows[0];
+        const probe = await this.faceService.extractDescriptor(imageBuffer);
+        if (!probe) {
+            throw new common_1.BadRequestException('No face detected in the photo. Please try again with a clear face photo.');
+        }
+        const candidates = await this.membersService.getAllFaceDescriptors();
+        if (!candidates.length) {
+            throw new common_1.BadRequestException('No members have registered face photos yet. Upload photos for members first.');
+        }
+        const match = this.faceService.findClosestMatch(probe, candidates);
+        if (!match) {
+            throw new common_1.BadRequestException('Face not recognised. The person may not be a registered member or photo quality is low.');
+        }
+        const memberRows = await this.db.query(`SELECT id, full_name, member_id, status FROM core.members WHERE id = $1 AND deleted_at IS NULL`, [match.id]);
+        if (!memberRows.length)
+            throw new common_1.NotFoundException('Matched member not found');
+        const member = memberRows[0];
+        if (member.status !== 'active') {
+            throw new common_1.BadRequestException(`${member.full_name}'s account is not active`);
+        }
+        const existing = await this.db.query(`SELECT id FROM attendance.records WHERE session_id = $1 AND member_id = $2`, [sessionId, member.id]);
+        if (existing.length) {
+            throw new common_1.ConflictException(`Attendance already marked for ${member.full_name}`);
+        }
+        let status = attendance_dto_1.AttendanceStatus.PRESENT;
+        if (session.start_time) {
+            const sessionStart = new Date(`${session.session_date}T${session.start_time}`);
+            if (new Date() > new Date(sessionStart.getTime() + 15 * 60 * 1000)) {
+                status = attendance_dto_1.AttendanceStatus.LATE;
+            }
+        }
+        const record = await this.db.query(`INSERT INTO attendance.records
+        (session_id, member_id, attendance_status, check_in_time, check_in_method, scanned_by_admin)
+       VALUES ($1,$2,$3,NOW(),'face_scan',$4) RETURNING *`, [sessionId, member.id, status, adminId]);
+        return {
+            success: true,
+            attendanceId: record[0].id,
+            member: {
+                id: member.id,
+                memberId: member.member_id,
+                fullName: member.full_name,
+            },
+            status,
+            confidence: Math.round((1 - match.distance / 0.5) * 100),
+            checkInTime: record[0].check_in_time,
+            sessionTitle: session.title,
+        };
+    }
     async logScan(dto, memberId, adminId, success, reason) {
         await this.db.query(`INSERT INTO attendance.qr_scan_logs
         (session_id, raw_qr_payload, resolved_member, scanned_by,
@@ -221,6 +281,8 @@ exports.AttendanceService = AttendanceService;
 exports.AttendanceService = AttendanceService = AttendanceService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectDataSource)()),
-    __metadata("design:paramtypes", [typeorm_2.DataSource])
+    __metadata("design:paramtypes", [typeorm_2.DataSource,
+        members_service_1.MembersService,
+        face_service_1.FaceService])
 ], AttendanceService);
 //# sourceMappingURL=attendance.service.js.map

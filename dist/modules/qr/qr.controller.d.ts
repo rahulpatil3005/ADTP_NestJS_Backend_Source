@@ -1,7 +1,9 @@
+import { Response } from 'express';
 import { QrService } from './qr.service';
 export declare class QrController {
     private readonly qrService;
     constructor(qrService: QrService);
+    downloadAllZip(res: Response): Promise<void>;
     getQr(id: string): Promise<{
         memberId: any;
         fullName: any;

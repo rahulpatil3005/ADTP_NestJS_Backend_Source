@@ -17,6 +17,11 @@ export declare class MembersController {
         message: string;
     }>;
     attendanceSummary(id: string): Promise<any>;
+    uploadPhoto(id: string, file: Express.Multer.File): Promise<{
+        photoUrl: string;
+        faceDetected: boolean;
+        message: string;
+    }>;
     bulkImport(body: {
         members: CreateMemberDto[];
     }, adminId: string): Promise<{

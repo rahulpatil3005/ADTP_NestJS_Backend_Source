@@ -19,6 +19,9 @@ export declare class QrService {
         };
         error: any;
     }[]>;
+    private roundRect;
+    private renderMemberCard;
+    downloadAllQrZip(): Promise<Buffer>;
     getQrForMember(memberId: string): Promise<{
         memberId: any;
         fullName: any;

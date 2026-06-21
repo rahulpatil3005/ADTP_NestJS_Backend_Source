@@ -17,15 +17,18 @@ exports.MembersService = void 0;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
+const fs = require("fs");
 const crypto_util_1 = require("../../common/utils/crypto.util");
 const qr_util_1 = require("../../common/utils/qr.util");
 const whatsapp_service_1 = require("../../common/services/whatsapp.service");
 const settings_service_1 = require("../settings/settings.service");
+const face_service_1 = require("./face.service");
 let MembersService = MembersService_1 = class MembersService {
-    constructor(db, whatsapp, settings) {
+    constructor(db, whatsapp, settings, faceService) {
         this.db = db;
         this.whatsapp = whatsapp;
         this.settings = settings;
+        this.faceService = faceService;
         this.logger = new common_1.Logger(MembersService_1.name);
     }
     async create(dto, userId) {
@@ -188,6 +191,42 @@ let MembersService = MembersService_1 = class MembersService {
         }
         return results;
     }
+    async uploadPhoto(id, file) {
+        if (!file)
+            throw new common_1.BadRequestException('No photo file provided');
+        await this.findOne(id);
+        const photoUrl = `/uploads/photos/${file.filename}`;
+        let faceDescriptor = null;
+        if (this.faceService.isReady) {
+            const buffer = fs.readFileSync(file.path);
+            faceDescriptor = await this.faceService.extractDescriptor(buffer);
+            if (!faceDescriptor) {
+                this.logger.warn(`No face detected in uploaded photo for member ${id}`);
+            }
+        }
+        await this.db.query(`UPDATE core.members
+       SET photo_url = $1, face_descriptor = $2, updated_at = NOW()
+       WHERE id = $3`, [photoUrl, faceDescriptor ? JSON.stringify(faceDescriptor) : null, id]);
+        return {
+            photoUrl,
+            faceDetected: !!faceDescriptor,
+            message: faceDescriptor
+                ? 'Photo uploaded and face registered for attendance'
+                : 'Photo uploaded (no face detected — re-upload a clear face photo for face scan)',
+        };
+    }
+    async getAllFaceDescriptors() {
+        const rows = await this.db.query(`SELECT id, face_descriptor FROM core.members
+       WHERE face_descriptor IS NOT NULL AND deleted_at IS NULL AND status = 'active'`);
+        return rows
+            .filter((r) => r.face_descriptor)
+            .map((r) => ({
+            id: r.id,
+            descriptor: typeof r.face_descriptor === 'string'
+                ? JSON.parse(r.face_descriptor)
+                : r.face_descriptor,
+        }));
+    }
 };
 exports.MembersService = MembersService;
 exports.MembersService = MembersService = MembersService_1 = __decorate([
@@ -195,6 +234,7 @@ exports.MembersService = MembersService = MembersService_1 = __decorate([
     __param(0, (0, typeorm_1.InjectDataSource)()),
     __metadata("design:paramtypes", [typeorm_2.DataSource,
         whatsapp_service_1.WhatsAppService,
-        settings_service_1.SettingsService])
+        settings_service_1.SettingsService,
+        face_service_1.FaceService])
 ], MembersService);
 //# sourceMappingURL=members.service.js.map

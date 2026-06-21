@@ -5,14 +5,20 @@ const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const helmet_1 = require("helmet");
 const compression = require("compression");
+const path = require("path");
+const fs = require("fs");
 const app_module_1 = require("./app.module");
 const http_exception_filter_1 = require("./common/filters/http-exception.filter");
 const response_transform_interceptor_1 = require("./common/interceptors/response-transform.interceptor");
 const audit_log_interceptor_1 = require("./common/interceptors/audit-log.interceptor");
 async function bootstrap() {
+    const uploadsDir = path.join(process.cwd(), 'uploads', 'photos');
+    if (!fs.existsSync(uploadsDir))
+        fs.mkdirSync(uploadsDir, { recursive: true });
     const app = await core_1.NestFactory.create(app_module_1.AppModule, {
         logger: ['log', 'warn', 'error', 'debug'],
     });
+    app.useStaticAssets(path.join(process.cwd(), 'uploads'), { prefix: '/uploads' });
     app.use((0, helmet_1.default)());
     app.use(compression());
     app.enableCors({

@@ -23,6 +23,16 @@ let QrController = class QrController {
     constructor(qrService) {
         this.qrService = qrService;
     }
+    async downloadAllZip(res) {
+        const buffer = await this.qrService.downloadAllQrZip();
+        const date = new Date().toISOString().split('T')[0];
+        res.set({
+            'Content-Type': 'application/zip',
+            'Content-Disposition': `attachment; filename="ADTP_QR_Cards_${date}.zip"`,
+            'Content-Length': buffer.length,
+        });
+        res.end(buffer);
+    }
     getQr(id) {
         return this.qrService.getQrForMember(id);
     }
@@ -34,6 +44,15 @@ let QrController = class QrController {
     }
 };
 exports.QrController = QrController;
+__decorate([
+    (0, common_1.Get)('download-all-zip'),
+    (0, roles_decorator_1.Roles)('super_admin'),
+    (0, swagger_1.ApiOperation)({ summary: 'Download all active member QR cards as a ZIP (super admin only)' }),
+    __param(0, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], QrController.prototype, "downloadAllZip", null);
 __decorate([
     (0, common_1.Get)('member/:id'),
     (0, roles_decorator_1.Roles)('super_admin', 'admin', 'member'),
