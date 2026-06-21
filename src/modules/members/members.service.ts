@@ -3,7 +3,6 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import * as fs from 'fs';
 import { CreateMemberDto, UpdateMemberDto, MemberSearchDto } from './dto/member.dto';
 import { encrypt, decrypt } from '../../common/utils/crypto.util';
 import { generateMemberQr } from '../../common/utils/qr.util';
@@ -251,12 +250,12 @@ export class MembersService {
     if (!file) throw new BadRequestException('No photo file provided');
     await this.findOne(id);
 
-    const photoUrl = `/uploads/photos/${file.filename}`;
+    // Store photo as base64 data URL in DB — survives Railway redeploys
+    const photoDataUrl = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
     let faceDescriptor: number[] | null = null;
 
     if (this.faceService.isReady) {
-      const buffer = fs.readFileSync(file.path);
-      faceDescriptor = await this.faceService.extractDescriptor(buffer);
+      faceDescriptor = await this.faceService.extractDescriptor(file.buffer);
       if (!faceDescriptor) {
         this.logger.warn(`No face detected in uploaded photo for member ${id}`);
       }
@@ -266,11 +265,11 @@ export class MembersService {
       `UPDATE core.members
        SET photo_url = $1, face_descriptor = $2, updated_at = NOW()
        WHERE id = $3`,
-      [photoUrl, faceDescriptor ? JSON.stringify(faceDescriptor) : null, id],
+      [photoDataUrl, faceDescriptor ? JSON.stringify(faceDescriptor) : null, id],
     );
 
     return {
-      photoUrl,
+      photoUrl: photoDataUrl,
       faceDetected: !!faceDescriptor,
       message: faceDescriptor
         ? 'Photo uploaded and face registered for attendance'
