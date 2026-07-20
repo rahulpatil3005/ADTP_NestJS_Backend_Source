@@ -12,20 +12,37 @@ export interface ReportFilters {
   format?: 'json' | 'excel' | 'csv';
 }
 
-// ── IST helpers (Railway server runs UTC — always specify timezone) ──
+// ── IST Timezone Utilities ────────────────────────────────────
+// Railway server runs UTC. Always pass timeZone: 'Asia/Kolkata'
+// explicitly — never rely on server default timezone.
 
-function toISTDateTime(utcDate: string | Date | null | undefined): string {
-  if (!utcDate) return '—';
-  const date = typeof utcDate === 'string' ? new Date(utcDate) : utcDate;
-  if (isNaN(date.getTime())) return '—';
-  return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+function toISTDateTime(val: string | Date | null | undefined): string {
+  if (!val) return '—';
+  const d = typeof val === 'string' ? new Date(val) : val;
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 }
 
-function toISTDateOnly(utcDate: string | Date | null | undefined): string {
-  if (!utcDate) return '—';
-  const date = typeof utcDate === 'string' ? new Date(utcDate) : utcDate;
-  if (isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+function toISTDateOnly(val: string | Date | null | undefined): string {
+  if (!val) return '—';
+  const d = typeof val === 'string' ? new Date(val) : val;
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+}
+
+function calcDuration(
+  checkIn: string | Date | null | undefined,
+  checkOut: string | Date | null | undefined,
+): string {
+  if (!checkIn || !checkOut) return '—';
+  const inD  = typeof checkIn  === 'string' ? new Date(checkIn)  : checkIn;
+  const outD = typeof checkOut === 'string' ? new Date(checkOut) : checkOut;
+  if (isNaN(inD.getTime()) || isNaN(outD.getTime())) return '—';
+  const mins = Math.round((outD.getTime() - inD.getTime()) / 60000);
+  if (mins <= 0) return '—';
+  return mins >= 60
+    ? `${Math.floor(mins / 60)}h ${mins % 60}m`
+    : `${mins}m`;
 }
 
 @Injectable()
@@ -42,19 +59,13 @@ export class ReportsService {
     const conditions = ['s.session_date IS NOT NULL'];
     const params: any[] = [];
     let idx = 1;
-
-    if (filters.fromDate) {
-      conditions.push(`s.session_date >= $${idx}`); params.push(filters.fromDate); idx++;
-    }
-    if (filters.toDate) {
-      conditions.push(`s.session_date <= $${idx}`); params.push(filters.toDate); idx++;
-    }
-    if (filters.memberId) {
-      conditions.push(`r.member_id = $${idx}`); params.push(filters.memberId); idx++;
-    }
+    if (filters.fromDate) { conditions.push(`s.session_date >= $${idx}`); params.push(filters.fromDate); idx++; }
+    if (filters.toDate)   { conditions.push(`s.session_date <= $${idx}`); params.push(filters.toDate);   idx++; }
+    if (filters.memberId) { conditions.push(`r.member_id = $${idx}`);     params.push(filters.memberId); idx++; }
 
     return this.db.query(
       `SELECT r.*, m.full_name, m.member_id AS member_code, m.instrument,
+              m.mobile_number,
               s.title AS session_title, s.session_date, s.session_type
        FROM attendance.records r
        JOIN core.members m ON m.id = r.member_id
@@ -75,6 +86,11 @@ export class ReportsService {
     `);
   }
 
+  // ── exportExcel ───────────────────────────────────────────
+  // Columns match your screenshot exactly:
+  // Member ID | Full Name | Instrument | Mobile | Status |
+  // Check-In (IST) | Check-Out (IST) | Duration | Method
+
   async exportExcel(filters: ReportFilters): Promise<Buffer> {
     const data = await this.getRangeReport(filters);
 
@@ -87,19 +103,17 @@ export class ReportsService {
     });
 
     sheet.columns = [
-      { header: 'Member ID',  key: 'member_code',        width: 18 },
-      { header: 'Full Name',  key: 'full_name',           width: 25 },
-      { header: 'Instrument', key: 'instrument',          width: 14 },
-      { header: 'Session',    key: 'session_title',       width: 30 },
-      { header: 'Date (IST)', key: 'session_date',        width: 14 },  // ← label updated
-      { header: 'Status',     key: 'attendance_status',   width: 12 },
-      { header: 'Check-In (IST)',  key: 'check_in_time',  width: 20 },  // ← label updated
-      { header: 'Check-Out (IST)', key: 'check_out_time', width: 20 },  // ← label updated
-      { header: 'Duration',   key: 'duration',            width: 12 },
-      { header: 'Method',     key: 'check_in_method',     width: 12 },
+      { header: 'Member ID',        key: 'member_code',       width: 18 },
+      { header: 'Full Name',        key: 'full_name',         width: 28 },
+      { header: 'Instrument',       key: 'instrument',        width: 14 },
+      { header: 'Mobile',           key: 'mobile_number',     width: 16 },
+      { header: 'Status',           key: 'attendance_status', width: 12 },
+      { header: 'Check-In (IST)',   key: 'check_in_time',     width: 24 },
+      { header: 'Check-Out (IST)',  key: 'check_out_time',    width: 24 },
+      { header: 'Duration',         key: 'duration',          width: 12 },
+      { header: 'Method',           key: 'check_in_method',   width: 12 },
     ];
 
-    // Header styling — unchanged from your original
     sheet.getRow(1).eachCell((cell) => {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3C3489' } };
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
@@ -108,28 +122,30 @@ export class ReportsService {
     sheet.getRow(1).height = 24;
 
     data.forEach((row: any, i: number) => {
-      const checkIn  = row.check_in_time  ? new Date(row.check_in_time)  : null;
-      const checkOut = row.check_out_time ? new Date(row.check_out_time) : null;
-      let duration = '—';
-      if (checkIn && checkOut) {
-        const mins = Math.round((checkOut.getTime() - checkIn.getTime()) / 60000);
-        duration = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
-      }
-
       const excelRow = sheet.addRow({
         member_code:       row.member_code,
         full_name:         row.full_name,
-        instrument:        row.instrument ? (row.instrument.charAt(0).toUpperCase() + row.instrument.slice(1)) : '—',
-        session_title:     row.session_title,
-        // ✅ FIX: was new Date().toLocaleDateString('en-IN') — no timezone = UTC on Railway
-        session_date:      row.session_date ? toISTDateOnly(row.session_date) : '',
+        instrument:        row.instrument
+                             ? row.instrument.charAt(0).toUpperCase() + row.instrument.slice(1)
+                             : '—',
+        mobile_number:     row.mobile_number,
         attendance_status: row.attendance_status?.toUpperCase(),
-        // ✅ FIX: was checkIn.toLocaleString('en-IN') — no timezone = UTC on Railway
-        check_in_time:     checkIn  ? toISTDateTime(checkIn)  : '—',
-        check_out_time:    checkOut ? toISTDateTime(checkOut) : '—',
-        duration,
+        // ✅ IST conversion — fixes the 5:30h offset
+        check_in_time:     toISTDateTime(row.check_in_time),
+        check_out_time:    toISTDateTime(row.check_out_time),
+        duration:          calcDuration(row.check_in_time, row.check_out_time),
         check_in_method:   row.check_in_method ?? '—',
       });
+
+      // Status colour coding
+      const statusCell = excelRow.getCell('attendance_status');
+      if (row.attendance_status === 'present')
+        statusCell.font = { color: { argb: 'FF27500A' }, bold: true };
+      else if (row.attendance_status === 'absent')
+        statusCell.font = { color: { argb: 'FFA32D2D' }, bold: true };
+      else if (row.attendance_status === 'late')
+        statusCell.font = { color: { argb: 'FF854F0B' }, bold: true };
+
       if (i % 2 === 1) {
         excelRow.eachCell((cell) => {
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F4FD' } };
@@ -140,35 +156,33 @@ export class ReportsService {
     return (await workbook.xlsx.writeBuffer()) as unknown as Buffer;
   }
 
+  // ── exportCsv ─────────────────────────────────────────────
+
   async exportCsv(filters: ReportFilters): Promise<string> {
     const data = await this.getRangeReport(filters);
-    // ✅ FIX: column headers updated to show IST
-    const header = 'Member ID,Full Name,Instrument,Session,Date (IST),Status,Check-In (IST),Check-Out (IST),Duration,Method\n';
-    const rows = data.map((r: any) => {
-      const checkIn  = r.check_in_time  ? new Date(r.check_in_time)  : null;
-      const checkOut = r.check_out_time ? new Date(r.check_out_time) : null;
-      let duration = '';
-      if (checkIn && checkOut) {
-        const mins = Math.round((checkOut.getTime() - checkIn.getTime()) / 60000);
-        duration = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
-      }
-      return [
+    const header =
+      'Member ID,Full Name,Instrument,Mobile,Status,' +
+      'Check-In (IST),Check-Out (IST),Duration,Method\n';
+    const rows = data.map((r: any) =>
+      [
         r.member_code,
         `"${r.full_name}"`,
-        r.instrument ? (r.instrument.charAt(0).toUpperCase() + r.instrument.slice(1)) : '',
-        `"${r.session_title}"`,
-        // ✅ FIX: was r.session_date (raw UTC) — now IST formatted
-        r.session_date ? toISTDateOnly(r.session_date) : '',
-        r.attendance_status,
-        // ✅ FIX: was checkIn.toLocaleString('en-IN') — no timezone = UTC
-        checkIn  ? toISTDateTime(checkIn)  : '',
-        checkOut ? toISTDateTime(checkOut) : '',
-        duration,
+        r.instrument
+          ? r.instrument.charAt(0).toUpperCase() + r.instrument.slice(1)
+          : '',
+        r.mobile_number,
+        r.attendance_status?.toUpperCase(),
+        // ✅ IST conversion
+        toISTDateTime(r.check_in_time),
+        toISTDateTime(r.check_out_time),
+        calcDuration(r.check_in_time, r.check_out_time),
         r.check_in_method ?? '',
-      ].join(',');
-    });
+      ].join(','),
+    );
     return header + rows.join('\n');
   }
+
+  // ── exportMemberList ──────────────────────────────────────
 
   async exportMemberList(): Promise<Buffer> {
     const rows = await this.db.query(
@@ -186,18 +200,17 @@ export class ReportsService {
 
     sheet.columns = [
       { header: 'Member ID',    key: 'member_id',           width: 18 },
-      { header: 'Full Name',    key: 'full_name',            width: 28 },
-      { header: 'Mobile',       key: 'mobile_number',        width: 16 },
-      { header: 'Email',        key: 'email',                width: 28 },
-      { header: 'Gender',       key: 'gender',               width: 10 },
-      { header: 'Instrument',   key: 'instrument',           width: 14 },
-      { header: 'Availability', key: 'availability',         width: 14 },
-      { header: 'Status',       key: 'status',               width: 12 },
-      { header: 'Joining Date', key: 'joining_date',         width: 14 },
-      { header: 'Prior Exp',    key: 'has_prior_pathak_exp', width: 10 },
+      { header: 'Full Name',    key: 'full_name',           width: 28 },
+      { header: 'Mobile',       key: 'mobile_number',       width: 16 },
+      { header: 'Email',        key: 'email',               width: 28 },
+      { header: 'Gender',       key: 'gender',              width: 10 },
+      { header: 'Instrument',   key: 'instrument',          width: 14 },
+      { header: 'Availability', key: 'availability',        width: 14 },
+      { header: 'Status',       key: 'status',              width: 12 },
+      { header: 'Joining Date', key: 'joining_date',        width: 14 },
+      { header: 'Prior Exp',    key: 'has_prior_pathak_exp',width: 10 },
     ];
 
-    // Header styling — unchanged from your original (red theme for member list)
     sheet.getRow(1).eachCell((cell) => {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF8A0112' } };
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
@@ -208,10 +221,10 @@ export class ReportsService {
     rows.forEach((r: any, i: number) => {
       const row = sheet.addRow({
         ...r,
-        // ✅ FIX: was new Date().toLocaleDateString('en-IN') — no timezone
-        joining_date: r.joining_date ? toISTDateOnly(r.joining_date) : '—',
+        // ✅ IST conversion
+        joining_date:        r.joining_date ? toISTDateOnly(r.joining_date) : '—',
         has_prior_pathak_exp: r.has_prior_pathak_exp ? 'Yes' : 'No',
-        status: r.status?.toUpperCase(),
+        status:              r.status?.toUpperCase(),
       });
       if (i % 2 === 1) {
         row.eachCell((cell) => {
@@ -222,6 +235,8 @@ export class ReportsService {
 
     return (await workbook.xlsx.writeBuffer()) as unknown as Buffer;
   }
+
+  // ── exportInactiveMembers ─────────────────────────────────
 
   async exportInactiveMembers(): Promise<Buffer> {
     const rows = await this.db.query(
@@ -242,7 +257,8 @@ export class ReportsService {
             ) < CURRENT_DATE - INTERVAL '30 days'
             OR NOT EXISTS (SELECT 1 FROM attendance.records r3 WHERE r3.member_id = m.id)
           )
-       GROUP BY m.id, m.member_id, m.full_name, m.mobile_number, m.instrument, m.status, m.joining_date
+       GROUP BY m.id, m.member_id, m.full_name, m.mobile_number,
+                m.instrument, m.status, m.joining_date
        ORDER BY last_attendance_date ASC NULLS FIRST`,
     );
 
@@ -261,7 +277,6 @@ export class ReportsService {
       { header: 'Sessions Attended', key: 'total_sessions_attended', width: 18 },
     ];
 
-    // Header styling — unchanged from your original (red theme)
     sheet.getRow(1).eachCell((cell) => {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF8A0112' } };
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
@@ -272,12 +287,10 @@ export class ReportsService {
     rows.forEach((r: any, i: number) => {
       const row = sheet.addRow({
         ...r,
-        // ✅ FIX: was new Date().toLocaleDateString('en-IN') — no timezone
-        joining_date: r.joining_date ? toISTDateOnly(r.joining_date) : '—',
-        last_attendance_date: r.last_attendance_date
-          ? toISTDateOnly(r.last_attendance_date)
-          : 'Never',
-        status: r.status?.toUpperCase(),
+        // ✅ IST conversion
+        joining_date:        r.joining_date        ? toISTDateOnly(r.joining_date)        : '—',
+        last_attendance_date: r.last_attendance_date ? toISTDateOnly(r.last_attendance_date) : 'Never',
+        status:              r.status?.toUpperCase(),
       });
       if (i % 2 === 1) {
         row.eachCell((cell) => {
