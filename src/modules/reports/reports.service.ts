@@ -240,13 +240,36 @@ export class ReportsService {
   // Returns all members with summary + per-session records
 
   async getMemberAttendanceDetail(filters: ReportFilters) {
-    const conditions: string[] = ['m.deleted_at IS NULL'];
+    const memberConditions: string[] = ['m.deleted_at IS NULL'];
+    const recordConditions: string[] = [];
+    const sessionConditions: string[] = [];
     const params: any[] = [];
     let idx = 1;
-    if (filters.fromDate) { conditions.push(`s.session_date >= $${idx}`); params.push(filters.fromDate); idx++; }
-    if (filters.toDate)   { conditions.push(`s.session_date <= $${idx}`); params.push(filters.toDate);   idx++; }
-    if (filters.instrument) { conditions.push(`m.instrument = $${idx}`); params.push(filters.instrument); idx++; }
 
+    if (filters.fromDate) {
+      recordConditions.push(`s.session_date >= $${idx}`);
+      sessionConditions.push(`session_date >= $${idx}`);
+      params.push(filters.fromDate); idx++;
+    }
+    if (filters.toDate) {
+      recordConditions.push(`s.session_date <= $${idx}`);
+      sessionConditions.push(`session_date <= $${idx}`);
+      params.push(filters.toDate); idx++;
+    }
+    if (filters.instrument) {
+      memberConditions.push(`m.instrument = $${idx}`);
+      params.push(filters.instrument); idx++;
+    }
+
+    // Total sessions held (for attendance % denominator)
+    const sessionWhere = sessionConditions.length ? `WHERE ${sessionConditions.join(' AND ')}` : '';
+    const sessionCountRows = await this.db.query(
+      `SELECT COUNT(*) AS total FROM attendance.sessions ${sessionWhere}`,
+      params.slice(0, sessionConditions.length),
+    );
+    const totalSessionsHeld = Number(sessionCountRows[0]?.total ?? 0);
+
+    const allConditions = [...memberConditions, ...recordConditions];
     const records = await this.db.query(
       `SELECT m.id AS member_uuid, m.member_id AS member_code, m.full_name,
               m.instrument, m.mobile_number,
@@ -255,7 +278,7 @@ export class ReportsService {
        FROM core.members m
        LEFT JOIN attendance.records r ON r.member_id = m.id
        LEFT JOIN attendance.sessions s ON s.id = r.session_id
-       WHERE ${conditions.join(' AND ')}
+       WHERE ${allConditions.join(' AND ')}
        ORDER BY m.full_name ASC, s.session_date DESC`,
       params,
     );
@@ -265,10 +288,10 @@ export class ReportsService {
     for (const row of records) {
       if (!memberMap.has(row.member_uuid)) {
         memberMap.set(row.member_uuid, {
-          member_uuid: row.member_uuid,
-          member_code: row.member_code,
-          full_name:   row.full_name,
-          instrument:  row.instrument,
+          member_uuid:   row.member_uuid,
+          member_code:   row.member_code,
+          full_name:     row.full_name,
+          instrument:    row.instrument,
           mobile_number: row.mobile_number,
           sessions: [],
         });
@@ -286,15 +309,18 @@ export class ReportsService {
       }
     }
 
-    return Array.from(memberMap.values()).map((m) => ({
-      ...m,
-      total_sessions: m.sessions.length,
-      present_count:  m.sessions.filter((s: any) => s.attendance_status === 'present' || s.attendance_status === 'checked_out').length,
-      absent_count:   m.sessions.filter((s: any) => s.attendance_status === 'absent').length,
-      attendance_pct: m.sessions.length > 0
-        ? Math.round((m.sessions.filter((s: any) => s.attendance_status === 'present' || s.attendance_status === 'checked_out').length / m.sessions.length) * 100)
-        : 0,
-    }));
+    return Array.from(memberMap.values()).map((m) => {
+      const present = m.sessions.filter((s: any) => s.attendance_status === 'present' || s.attendance_status === 'checked_out').length;
+      const absent  = m.sessions.filter((s: any) => s.attendance_status === 'absent').length;
+      const denom   = totalSessionsHeld > 0 ? totalSessionsHeld : m.sessions.length;
+      return {
+        ...m,
+        total_sessions: totalSessionsHeld,  // total sessions held in the system
+        present_count:  present,
+        absent_count:   absent,
+        attendance_pct: denom > 0 ? Math.round((present / denom) * 100) : 0,
+      };
+    });
   }
 
   async exportMemberAttendanceDetail(filters: ReportFilters): Promise<Buffer> {
