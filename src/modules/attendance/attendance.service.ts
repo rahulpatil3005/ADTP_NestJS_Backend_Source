@@ -530,8 +530,8 @@ export class AttendanceService implements OnModuleInit {
         instrument:        row.instrument ? (row.instrument.charAt(0).toUpperCase() + row.instrument.slice(1)) : '—',
         mobile_number:     row.mobile_number,
         attendance_status: row.attendance_status?.toUpperCase(),
-        check_in_time:     checkIn  ? checkIn.toLocaleString('en-IN')  : '—',
-        check_out_time:    checkOut ? checkOut.toLocaleString('en-IN') : '—',
+        check_in_time:     checkIn  ? checkIn.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })  : '—',
+        check_out_time:    checkOut ? checkOut.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—',
         duration,
         check_in_method:   row.check_in_method ?? '—',
       });
