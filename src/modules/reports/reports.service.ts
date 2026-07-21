@@ -236,6 +236,166 @@ export class ReportsService {
     return (await workbook.xlsx.writeBuffer()) as unknown as Buffer;
   }
 
+  // ── getMemberAttendanceDetail ─────────────────────────────
+  // Returns all members with summary + per-session records
+
+  async getMemberAttendanceDetail(filters: ReportFilters) {
+    const conditions: string[] = ['m.deleted_at IS NULL'];
+    const params: any[] = [];
+    let idx = 1;
+    if (filters.fromDate) { conditions.push(`s.session_date >= $${idx}`); params.push(filters.fromDate); idx++; }
+    if (filters.toDate)   { conditions.push(`s.session_date <= $${idx}`); params.push(filters.toDate);   idx++; }
+    if (filters.instrument) { conditions.push(`m.instrument = $${idx}`); params.push(filters.instrument); idx++; }
+
+    const records = await this.db.query(
+      `SELECT m.id AS member_uuid, m.member_id AS member_code, m.full_name,
+              m.instrument, m.mobile_number,
+              r.attendance_status, r.check_in_time, r.check_out_time, r.check_in_method,
+              s.title AS session_title, s.session_date, s.session_type
+       FROM core.members m
+       LEFT JOIN attendance.records r ON r.member_id = m.id
+       LEFT JOIN attendance.sessions s ON s.id = r.session_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY m.full_name ASC, s.session_date DESC`,
+      params,
+    );
+
+    // Group by member
+    const memberMap = new Map<string, any>();
+    for (const row of records) {
+      if (!memberMap.has(row.member_uuid)) {
+        memberMap.set(row.member_uuid, {
+          member_uuid: row.member_uuid,
+          member_code: row.member_code,
+          full_name:   row.full_name,
+          instrument:  row.instrument,
+          mobile_number: row.mobile_number,
+          sessions: [],
+        });
+      }
+      if (row.session_date) {
+        memberMap.get(row.member_uuid).sessions.push({
+          session_title:     row.session_title,
+          session_date:      row.session_date,
+          session_type:      row.session_type,
+          attendance_status: row.attendance_status,
+          check_in_time:     row.check_in_time,
+          check_out_time:    row.check_out_time,
+          check_in_method:   row.check_in_method,
+        });
+      }
+    }
+
+    return Array.from(memberMap.values()).map((m) => ({
+      ...m,
+      total_sessions: m.sessions.length,
+      present_count:  m.sessions.filter((s: any) => s.attendance_status === 'present' || s.attendance_status === 'checked_out').length,
+      absent_count:   m.sessions.filter((s: any) => s.attendance_status === 'absent').length,
+      attendance_pct: m.sessions.length > 0
+        ? Math.round((m.sessions.filter((s: any) => s.attendance_status === 'present' || s.attendance_status === 'checked_out').length / m.sessions.length) * 100)
+        : 0,
+    }));
+  }
+
+  async exportMemberAttendanceDetail(filters: ReportFilters): Promise<Buffer> {
+    const members = await this.getMemberAttendanceDetail(filters);
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Avishkar DHTP System';
+    workbook.created = new Date();
+
+    // ── Sheet 1: Summary ────────────────────────────────────
+    const summary = workbook.addWorksheet('Member Summary');
+    summary.columns = [
+      { header: 'Member ID',      key: 'member_code',     width: 18 },
+      { header: 'Full Name',      key: 'full_name',       width: 28 },
+      { header: 'Instrument',     key: 'instrument',      width: 14 },
+      { header: 'Mobile',         key: 'mobile_number',   width: 16 },
+      { header: 'Total Sessions', key: 'total_sessions',  width: 16 },
+      { header: 'Present',        key: 'present_count',   width: 12 },
+      { header: 'Absent',         key: 'absent_count',    width: 12 },
+      { header: 'Attendance %',   key: 'attendance_pct',  width: 14 },
+    ];
+    summary.getRow(1).eachCell((cell) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF8A0112' } };
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+    summary.getRow(1).height = 24;
+    members.forEach((m, i) => {
+      const row = summary.addRow({
+        member_code:    m.member_code,
+        full_name:      m.full_name,
+        instrument:     m.instrument ? m.instrument.charAt(0).toUpperCase() + m.instrument.slice(1) : '—',
+        mobile_number:  m.mobile_number,
+        total_sessions: m.total_sessions,
+        present_count:  m.present_count,
+        absent_count:   m.absent_count,
+        attendance_pct: `${m.attendance_pct}%`,
+      });
+      const pctCell = row.getCell('attendance_pct');
+      if (m.attendance_pct >= 75) pctCell.font = { color: { argb: 'FF27500A' }, bold: true };
+      else if (m.attendance_pct >= 50) pctCell.font = { color: { argb: 'FF854F0B' }, bold: true };
+      else pctCell.font = { color: { argb: 'FFA32D2D' }, bold: true };
+      if (i % 2 === 1) {
+        row.eachCell((cell) => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF0F1' } };
+        });
+      }
+    });
+
+    // ── Sheet 2: Detailed Records ────────────────────────────
+    const detail = workbook.addWorksheet('Detailed Records');
+    detail.columns = [
+      { header: 'Member ID',    key: 'member_code',       width: 18 },
+      { header: 'Full Name',    key: 'full_name',         width: 28 },
+      { header: 'Instrument',   key: 'instrument',        width: 14 },
+      { header: 'Session',      key: 'session_title',     width: 28 },
+      { header: 'Date',         key: 'session_date',      width: 14 },
+      { header: 'Status',       key: 'attendance_status', width: 12 },
+      { header: 'Check-In (IST)',  key: 'check_in_time',  width: 22 },
+      { header: 'Check-Out (IST)', key: 'check_out_time', width: 22 },
+      { header: 'Duration',     key: 'duration',          width: 12 },
+      { header: 'Method',       key: 'check_in_method',   width: 12 },
+    ];
+    detail.getRow(1).eachCell((cell) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3C3489' } };
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+    detail.getRow(1).height = 24;
+    let rowIdx = 0;
+    for (const m of members) {
+      for (const s of m.sessions) {
+        const row = detail.addRow({
+          member_code:       m.member_code,
+          full_name:         m.full_name,
+          instrument:        m.instrument ? m.instrument.charAt(0).toUpperCase() + m.instrument.slice(1) : '—',
+          session_title:     s.session_title,
+          session_date:      s.session_date ? toISTDateOnly(s.session_date) : '—',
+          attendance_status: s.attendance_status?.toUpperCase(),
+          check_in_time:     toISTDateTime(s.check_in_time),
+          check_out_time:    toISTDateTime(s.check_out_time),
+          duration:          calcDuration(s.check_in_time, s.check_out_time),
+          check_in_method:   s.check_in_method ?? '—',
+        });
+        const statusCell = row.getCell('attendance_status');
+        if (s.attendance_status === 'present' || s.attendance_status === 'checked_out')
+          statusCell.font = { color: { argb: 'FF27500A' }, bold: true };
+        else if (s.attendance_status === 'absent')
+          statusCell.font = { color: { argb: 'FFA32D2D' }, bold: true };
+        if (rowIdx % 2 === 1) {
+          row.eachCell((cell) => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F4FD' } };
+          });
+        }
+        rowIdx++;
+      }
+    }
+
+    return (await workbook.xlsx.writeBuffer()) as unknown as Buffer;
+  }
+
   // ── exportInactiveMembers ─────────────────────────────────
 
   async exportInactiveMembers(): Promise<Buffer> {

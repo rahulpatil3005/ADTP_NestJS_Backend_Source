@@ -92,6 +92,32 @@ export class ReportsController {
     res.status(HttpStatus.OK).send(buffer);
   }
 
+  @Get('member-attendance-detail')
+  @Roles('super_admin', 'admin')
+  @ApiOperation({ summary: 'All members attendance summary + per-session detail (JSON)' })
+  memberAttendanceDetail(
+    @Query('from') fromDate: string,
+    @Query('to') toDate: string,
+    @Query('instrument') instrument: string,
+  ) {
+    return this.reportsService.getMemberAttendanceDetail({ fromDate, toDate, instrument });
+  }
+
+  @Get('export/member-attendance-detail')
+  @Roles('super_admin', 'admin')
+  @ApiOperation({ summary: 'Export member attendance detail as Excel (2 sheets)' })
+  async exportMemberAttendanceDetail(
+    @Query('from') fromDate: string,
+    @Query('to') toDate: string,
+    @Query('instrument') instrument: string,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.reportsService.exportMemberAttendanceDetail({ fromDate, toDate, instrument });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=ADTP_Member_Attendance_${Date.now()}.xlsx`);
+    res.status(HttpStatus.OK).send(buffer);
+  }
+
   @Get('export/inactive-members')
   @Roles('super_admin', 'admin')
   @ApiOperation({ summary: 'Export inactive/absent members as Excel' })
